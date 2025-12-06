@@ -1,0 +1,1 @@
+import{a6 as a}from"./index-LD4cUYbR.js";const s=a("simulation",{state:()=>({formData:null,resultados:null,quotationFormData:null}),actions:{setFormData(t){this.formData=t},setResultados(t){this.resultados=t},setQuotationFormData(t){this.quotationFormData=t},reset(){this.formData=null,this.resultados=null,this.quotationFormData=null}}});export{s as u};
