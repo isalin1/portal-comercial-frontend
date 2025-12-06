@@ -1,0 +1,6 @@
+export enum ContactType {
+  VOLANTES = 'VOLANTES',
+  FACEBOOK = 'FACEBOOK',
+  TIKTOK = 'TIKTOK',
+  REFERIDOS = 'REFERIDOS',
+}
