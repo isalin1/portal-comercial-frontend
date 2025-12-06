@@ -2,7 +2,7 @@
   <div class="auth-container">
     <div class="logo-box">LAVANDERIAS</div>
     <p class="description">
-      1. Las herramientas de gestión que<br />
+      Las herramientas de gestión que<br />
       necesitas para brindar un<br />
       excelente servicio a tus clientes
     </p>
