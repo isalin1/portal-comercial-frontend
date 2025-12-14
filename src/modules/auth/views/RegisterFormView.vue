@@ -119,18 +119,23 @@ async function onSubmit() {
         authStore.token = result.token
         authStore.authStatus = AuthStatus.Authenticated
         alert(`¡Bienvenido, ${result.user.firstname}! Tu registro fue exitoso.`)
-        router.push({ name: 'dashboard' })
-      } else {
-        // Usuario inactivo (ADMIN) - mostrar mensaje y redirigir a login
+        //router.push({ name: 'dashboard' })
+        router.push({ name: 'register-company-form', query: { userId: result.user.id } })
+      } else {                
         alert(`¡Registro exitoso, ${result.user.firstname}! Tu cuenta está pendiente de activación. Por favor, contacta al administrador para activar tu cuenta.`)
-        router.push({ name: 'auth-presentation' })
+        //router.push({ name: 'auth-presentation' })
+        router.push({ name: 'register-company-form', query: { userId: result.user.id } })
       }
     } else {
-      alert(result.message)
+      alert(`❌ ${result.message}`)
     }
   } catch (e) {
     console.error('Error en el registro:', e)
-    alert('Error en el registro')
+    if (e instanceof Error) {
+      alert(`❌ Error en el registro: ${e.message}`)
+    } else {
+      alert('❌ Error en el registro. Por favor, intenta nuevamente.')
+    }
   }
 }
 </script>

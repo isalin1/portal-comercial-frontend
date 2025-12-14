@@ -32,6 +32,11 @@ export const authRoutes: RouteRecordRaw[] = [
         name: 'register-form',
         component: () => import('@/modules/auth/views/RegisterFormView.vue'),
       },
+      {
+        path: 'register-company-form',
+        name: 'register-company-form',
+        component: () => import('@/modules/auth/views/RegisterCompanyFormView.vue'),
+      },
     ],
   },
   {

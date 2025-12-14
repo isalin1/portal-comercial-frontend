@@ -43,12 +43,40 @@ export const registerAction = async (
     }
   } catch (error) {
     console.error('Error en register:', error)
-    if (isAxiosError(error) && error.response?.status === 401) {
+    if (isAxiosError(error)) {
+      // Manejar error 401 (No autorizado)
+      if (error.response?.status === 401) {
+        return {
+          ok: false,
+          message: 'Usuario o Contraseña incorrectos',
+        }
+      }
+      // Manejar error 409 (Conflict - DNI o email duplicado)
+      if (error.response?.status === 409) {
+        const errorMessage = error.response?.data?.message || 
+          error.response?.data?.error || 
+          'El DNI o email ya está registrado. Por favor, verifica tus datos.'
+        return {
+          ok: false,
+          message: errorMessage,
+        }
+      }
+      // Manejar otros errores con mensaje del backend
+      if (error.response?.data?.message) {
+        return {
+          ok: false,
+          message: error.response.data.message,
+        }
+      }
+      // Error genérico si no hay mensaje específico
       return {
         ok: false,
-        message: 'Usuario o Contraseña incorrectos',
+        message: `Error al registrar: ${error.response?.status ? `Código ${error.response.status}` : 'Error de conexión'}`,
       }
     }
-    throw new Error('No se pudo realizar la peticion')
+    return {
+      ok: false,
+      message: 'No se pudo realizar la petición. Por favor, verifica tu conexión.',
+    }
   }
 }

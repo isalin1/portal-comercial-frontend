@@ -20,6 +20,7 @@
             <option value="ACTIVO">Activo</option>
             <option value="VENCIDO">Vencido</option>
             <option value="SUSPENDIDO">Suspendido</option>
+            <option value="INACTIVO">Inactivo</option>
           </select>
         </div>
         <div class="filter-group">
@@ -174,7 +175,8 @@ const getStatusClass = (estado: string) => {
   return {
     'status-active': estado === 'ACTIVO',
     'status-expired': estado === 'VENCIDO',
-    'status-suspended': estado === 'SUSPENDIDO'
+    'status-suspended': estado === 'SUSPENDIDO',
+    'status-inactive': estado === 'INACTIVO'
   }
 }
 
@@ -380,6 +382,11 @@ onMounted(() => {
 .status-suspended {
   background-color: #fff3cd;
   color: #856404;
+}
+
+.status-inactive {
+  background-color: #9e9e9e;
+  color: white;
 }
 
 .plan-dates {

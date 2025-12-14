@@ -20,6 +20,7 @@
             <option value="ACTIVO">Activo</option>
             <option value="VENCIDO">Vencido</option>
             <option value="SUSPENDIDO">Suspendido</option>
+            <option value="INACTIVO">Inactivo</option>
           </select>
         </div>
         <div class="filter-group">
@@ -29,6 +30,7 @@
             <option value="premium">Premium</option>
             <option value="pro">Pro</option>
             <option value="emprendedor">Emprendedor</option>
+            <option value="sin_plan_tipo">Sin Plan</option>
           </select>
         </div>
         <div class="filter-group">
@@ -265,7 +267,8 @@ const getStatusClass = (estado: string) => {
   return {
     'status-active': estado === 'ACTIVO',
     'status-expired': estado === 'VENCIDO',
-    'status-suspended': estado === 'SUSPENDIDO'
+    'status-suspended': estado === 'SUSPENDIDO',
+    'status-inactive': estado === 'INACTIVO'
   }
 }
 
@@ -580,6 +583,11 @@ onMounted(async () => {
 .status-suspended {
   background-color: #fff3cd;
   color: #856404;
+}
+
+.status-inactive {
+  background-color: #9e9e9e;
+  color: white;
 }
 
 .action-buttons {

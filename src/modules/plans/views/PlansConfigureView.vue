@@ -66,6 +66,12 @@
                     >
                       Emprendedor
                     </option>
+                    <option 
+                      value="sin_plan_tipo"
+                      :disabled="isTypeOptionDisabled(plan.id, 'sin_plan_tipo', plan.nombrePeriodo)"
+                    >
+                      Sin Plan
+                    </option>
                   </select>
                 </td>
                 <td>
@@ -87,6 +93,13 @@
                       :disabled="isPeriodOptionDisabled(plan.id, 'anual', plan.tipo)"
                     >
                       Anual
+                    </option>
+
+                    <option 
+                      value="sin_plan_periodo"
+                      :disabled="isPeriodOptionDisabled(plan.id, 'sin_plan_periodo', plan.tipo)"
+                    >
+                      Sin Plan
                     </option>
                   </select>
                 </td>
@@ -156,6 +169,13 @@
                   >
                     Emprendedor
                   </option>
+
+                  <option 
+                    value="sin_plan_tipo"
+                    :disabled="isTypeOptionDisabled(plan.id, 'sin_plan_tipo', plan.nombrePeriodo)"
+                  >
+                    Sin Plan
+                  </option>
                 </select>
               </div>
               <div class="card-field">
@@ -178,6 +198,12 @@
                     :disabled="isPeriodOptionDisabled(plan.id, 'anual', plan.tipo)"
                   >
                     Anual
+                  </option>
+                  <option 
+                    value="sin_plan_periodo"
+                    :disabled="isPeriodOptionDisabled(plan.id, 'sin_plan_periodo', plan.tipo)"
+                  >
+                    Sin Plan
                   </option>
                 </select>
               </div>
@@ -240,6 +266,12 @@
               >
                 Emprendedor
               </option>
+              <option 
+                value="sin_plan_tipo"
+                :disabled="isNewPlanTypeDisabled('sin_plan_tipo')"
+              >
+                Sin Plan
+              </option>
             </select>
           </div>
           <div class="form-group">
@@ -262,6 +294,13 @@
                 :disabled="isNewPlanPeriodDisabled(newPlan.tipo, 'anual')"
               >
                 Anual
+              </option>
+
+              <option 
+                value="sin_plan_periodo"
+                :disabled="isNewPlanPeriodDisabled(newPlan.tipo, 'sin_plan_periodo')"
+              >
+                Sin Plan
               </option>
             </select>
           </div>
@@ -316,17 +355,20 @@ const newPlan = ref({
 
 // Función para calcular días según el período
 const calculateDays = (nombrePeriodo: string): number => {
-  const daysMap: Record<string, number> = {
+   const daysMap: Record<string, number> = {
     'mensual': 30,
     'semestral': 180,
-    'anual': 360
+    'anual': 360,
+    'sin_plan_periodo': 0
   }
-  return daysMap[nombrePeriodo] || 30
-}
+
+  return daysMap[nombrePeriodo] !== null ? daysMap[nombrePeriodo] : 30
+};
 
 // Watcher para actualizar días cuando cambia el período
 const onPeriodChange = (plan: any, isNewPlan: boolean = false) => {
   const days = calculateDays(plan.nombrePeriodo)
+  console.log({days});
   if (isNewPlan) {
     newPlan.value.diasPeriodo = days
     // No validar aquí, solo actualizar días
@@ -360,7 +402,7 @@ const isCombinationTaken = (tipo: string, nombrePeriodo: string, excludeId?: num
 
 // Función para verificar si un tipo tiene todos los períodos completos
 const hasAllPeriods = (tipo: string): boolean => {
-  const periods = ['mensual', 'semestral', 'anual']
+  const periods = ['mensual', 'semestral', 'anual', 'sin_plan_periodo']
   return periods.every(period => 
     plans.value.some(plan => plan.tipo === tipo && plan.nombrePeriodo === period)
   )
@@ -427,13 +469,15 @@ const sortPlans = (plansArray: Plan[]) => {
   const tipoOrder: Record<string, number> = {
     'premium': 1,
     'pro': 2,
-    'emprendedor': 3
+    'emprendedor': 3,
+    'sin_plan_tipo': 4
   }
   
   const periodoOrder: Record<string, number> = {
     'mensual': 1,
     'semestral': 2,
-    'anual': 3
+    'anual': 3,
+    'sin_plan_periodo': 4
   }
   
   return [...plansArray].sort((a, b) => {
