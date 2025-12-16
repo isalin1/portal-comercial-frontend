@@ -44,6 +44,14 @@ export const registerAction = async (
   } catch (error) {
     console.error('Error en register:', error)
     if (isAxiosError(error)) {
+      // Manejar error de CORS o conexión
+      if (!error.response && error.code === 'ERR_NETWORK' || error.message?.includes('CORS') || error.message?.includes('Network Error')) {
+        return {
+          ok: false,
+          message: 'Error de conexión con el servidor. Por favor, verifica que el backend esté disponible y la URL de la API esté correctamente configurada.',
+        }
+      }
+      
       // Manejar error 401 (No autorizado)
       if (error.response?.status === 401) {
         return {
@@ -76,7 +84,7 @@ export const registerAction = async (
     }
     return {
       ok: false,
-      message: 'No se pudo realizar la petición. Por favor, verifica tu conexión.',
+      message: 'No se pudo realizar la petición. Por favor, verifica tu conexión y que el backend esté disponible.',
     }
   }
 }
