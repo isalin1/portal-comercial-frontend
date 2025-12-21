@@ -120,6 +120,19 @@ const unitDisplayNames: Record<string, string> = {
   'METER': 'Metro (mt)'
 }
 
+// Mapeo de categorías a unidades por defecto (fallback si no se encuentra en la BD)
+const categoryToDefaultUnit: Record<string, string> = {
+  'LAVADO': 'KILOGRAM',
+  'LAVADO_ESPECIAL': 'UNIT',
+  'LAVADO_EN_SECO': 'UNIT',
+  'PLANCHADO': 'UNIT',
+  'FRAZADAS': 'UNIT',
+  'EDREDONES': 'UNIT',
+  'ZAPATILLAS': 'PAIR',
+  'ALFOMBRAS': 'METER',
+  'CORTINAS': 'METER'
+}
+
 // Mapeo de categorías a tipos permitidos (debe coincidir con CreateServiceView)
 const categoryToTypesMap: Record<string, string[]> = {
   'LAVADO': ['GENERAL', 'OTROS'],
@@ -284,10 +297,46 @@ function getCategoryDisplayName(categoryType: string): string {
 function getCategoryUnit(categoryType: string): string {
   // Obtener la unidad de la primera categoría de servicio con este tipo
   const categoryData = serviceCategories.value.find((cat: any) => cat.categoryType === categoryType)
+  
   if (categoryData && categoryData.unit) {
-    return unitDisplayNames[categoryData.unit] || categoryData.unit
+    // Normalizar la unidad a mayúsculas para coincidir con el mapeo
+    const unitKey = String(categoryData.unit).toUpperCase()
+    const displayName = unitDisplayNames[unitKey]
+    
+    if (displayName) {
+      return displayName
+    }
+    
+    // Si no está en el mapeo, devolver el valor original
+    return categoryData.unit
   }
-  return 'N/A'
+  
+  // Fallback 1: intentar obtener la unidad desde los servicios de esta categoría
+  const servicesInCategory = servicesByCategory.value[categoryType]
+  if (servicesInCategory && servicesInCategory.length > 0) {
+    const firstService = servicesInCategory[0]
+    if (firstService.servicecategory && firstService.servicecategory.unit) {
+      const unitKey = String(firstService.servicecategory.unit).toUpperCase()
+      const displayName = unitDisplayNames[unitKey]
+      if (displayName) {
+        return displayName
+      }
+      return firstService.servicecategory.unit
+    }
+  }
+  
+  // Fallback 2: usar el mapeo de categorías a unidades por defecto
+  const defaultUnit = categoryToDefaultUnit[categoryType]
+  if (defaultUnit) {
+    const displayName = unitDisplayNames[defaultUnit]
+    if (displayName) {
+      return displayName
+    }
+    return defaultUnit
+  }
+  
+  // Fallback final: devolver 'Unidad (pieza)' como valor por defecto
+  return 'Unidad (pieza)'
 }
 
 // Función para verificar si todos los tipos de una categoría ya están usados
@@ -453,6 +502,10 @@ onActivated(() => {
   min-height: 100vh;
   background-color: #f5f5f5;
   padding: 20px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .services-header {
@@ -525,6 +578,8 @@ onActivated(() => {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .service-category {
@@ -532,6 +587,9 @@ onActivated(() => {
   border-radius: 10px;
   padding: 20px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .category-header {
@@ -601,12 +659,18 @@ onActivated(() => {
   background-color: #f8f9fa;
   border-radius: 6px;
   border: 1px solid #e9ecef;
+  width: 100%;
+  box-sizing: border-box;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .service-name {
   font-weight: 600;
   color: #333;
   flex: 1;
+  min-width: 100px;
+  word-break: break-word;
 }
 
 .service-type {
@@ -615,26 +679,29 @@ onActivated(() => {
   background-color: #f0f0f0;
   padding: 4px 8px;
   border-radius: 12px;
-  margin: 0 15px;
+  margin: 0 8px;
   min-width: 60px;
   text-align: center;
   font-weight: 500;
   text-transform: uppercase;
+  flex-shrink: 0;
 }
 
 .service-price {
   font-size: 14px;
   color: #666;
   font-weight: 600;
-  margin: 0 20px;
-  min-width: 80px;
+  margin: 0 8px;
+  min-width: 70px;
   text-align: right;
+  flex-shrink: 0;
 }
 
 .service-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .edit-btn {
@@ -719,7 +786,6 @@ onActivated(() => {
 /* Responsive Design */
 @media (min-width: 768px) {
   .services-container {
-    max-width: 100%;
     padding: 2rem;
   }
 
@@ -742,14 +808,14 @@ onActivated(() => {
 
   .service-item {
     padding: 15px 20px;
+    flex-wrap: nowrap;
   }
 }
 
 @media (min-width: 1024px) {
   .services-container {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 2rem 4rem;
+    padding: 2rem;
+    max-width: 100%;
   }
 
   .services-categories {
@@ -760,6 +826,7 @@ onActivated(() => {
 
   .service-category {
     padding: 1.5rem;
+    min-width: 0; /* Permite que el grid item se ajuste */
   }
 
   .category-title {
@@ -772,27 +839,44 @@ onActivated(() => {
 
   .service-name {
     font-size: 15px;
-    min-width: 150px;
+    min-width: 120px;
   }
 
   .service-type {
     font-size: 13px;
-    min-width: 100px;
+    min-width: 80px;
   }
 
   .service-price {
     font-size: 16px;
-    min-width: 100px;
+    min-width: 90px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .services-container {
+    padding: 2rem 3rem;
   }
 }
 
 @media (min-width: 1440px) {
   .services-container {
-    max-width: 1600px;
+    padding: 2rem 4rem;
   }
 
   .services-categories {
     grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+  }
+}
+
+@media (min-width: 1920px) {
+  .services-container {
+    padding: 2rem 5rem;
+  }
+
+  .services-categories {
+    grid-template-columns: repeat(4, 1fr);
     gap: 2rem;
   }
 }

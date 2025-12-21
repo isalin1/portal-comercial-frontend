@@ -201,12 +201,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { crearCliente, getAllUsers } from '@/api/lavanderiaApi'
 import { useAuthStore } from '@/modules/auth/stores/auth.store'
-
-// Interfaces
-interface LocationItem {
-  id: number
-  name: string
-}
+import { useUbigeo } from '@/composables/useUbigeo'
 
 const router = useRouter()
 const route = useRoute()
@@ -217,58 +212,8 @@ const loading = ref(false)
 // Verificar si viene del formulario de creación de servicio
 const fromServiceOrder = computed(() => route.query.fromServiceOrder === 'true')
 
-// Datos de ubicación
-const departments = ref<LocationItem[]>([
-  { id: 1, name: 'Lima' },
-  { id: 2, name: 'Arequipa' },
-  { id: 3, name: 'Cusco' },
-  { id: 4, name: 'La Libertad' },
-  { id: 5, name: 'Piura' }
-])
-
-const provinces = ref<LocationItem[]>([])
-const districts = ref<LocationItem[]>([])
-
-// Datos de ubicación reales
-const locationData = {
-  1: { // Lima
-    provinces: [
-      { id: 1, name: 'Lima' },
-      { id: 2, name: 'Callao' },
-      { id: 3, name: 'Huaral' },
-      { id: 4, name: 'Huarochirí' }
-    ],
-    districts: {
-      1: [ // Lima
-        { id: 1, name: 'Miraflores' },
-        { id: 2, name: 'San Isidro' },
-        { id: 3, name: 'La Molina' },
-        { id: 4, name: 'Surco' },
-        { id: 5, name: 'Pueblo Libre' },
-        { id: 6, name: 'Jesús María' }
-      ],
-      2: [ // Callao
-        { id: 7, name: 'Callao' },
-        { id: 8, name: 'Bellavista' },
-        { id: 9, name: 'La Perla' }
-      ]
-    }
-  },
-  2: { // Arequipa
-    provinces: [
-      { id: 5, name: 'Arequipa' },
-      { id: 6, name: 'Caylloma' },
-      { id: 7, name: 'Islay' }
-    ],
-    districts: {
-      5: [ // Arequipa
-        { id: 10, name: 'Arequipa' },
-        { id: 11, name: 'Cayma' },
-        { id: 12, name: 'Cerro Colorado' }
-      ]
-    }
-  }
-}
+// Usar el composable de ubigeo
+const { departments, provinces, districts, loadDepartments, loadProvinces, loadDistricts } = useUbigeo()
 
 // Formulario reactivo
 const form = reactive({
@@ -302,48 +247,16 @@ function clearAuthState() {
 }
 
 // Función para manejar cambio de departamento
-function onDepartmentChange() {
+async function onDepartmentChange() {
   form.province = ''
   form.district = ''
-  districts.value = []
-  
-  // Cargar provincias basadas en el departamento seleccionado
-  if (form.department) {
-    const departmentId = parseInt(form.department)
-    const departmentInfo = locationData[departmentId as keyof typeof locationData]
-    if (departmentInfo) {
-      provinces.value = departmentInfo.provinces as LocationItem[]
-    } else {
-      provinces.value = []
-    }
-  } else {
-    provinces.value = []
-  }
+  await loadProvinces(form.department)
 }
 
 // Función para manejar cambio de provincia
-function onProvinceChange() {
+async function onProvinceChange() {
   form.district = ''
-  
-  // Cargar distritos basados en la provincia seleccionada
-  if (form.province && form.department) {
-    const departmentId = parseInt(form.department)
-    const provinceId = parseInt(form.province)
-    const departmentInfo = locationData[departmentId as keyof typeof locationData]
-    
-    if (departmentInfo && departmentInfo.districts) {
-      const provinceDistricts = departmentInfo.districts[provinceId as keyof typeof departmentInfo.districts]
-      if (provinceDistricts) {
-        districts.value = provinceDistricts as LocationItem[]
-      } else {
-        districts.value = []
-      }
-    } else {
-      districts.value = []
-    }
-  } else {
-    districts.value = []
-  }
+  await loadDistricts(form.province)
 }
 
 // Función para manejar el envío del formulario
@@ -388,6 +301,11 @@ async function handleSubmit() {
     
     // El backend obtendrá automáticamente el businesId del usuario logueado
 
+    // Obtener los nombres de ubicación desde los IDs
+    const selectedDepartment = departments.value.find((d: any) => d.id === parseInt(form.department))
+    const selectedProvince = provinces.value.find((p: any) => p.id === parseInt(form.province))
+    const selectedDistrict = districts.value.find((d: any) => d.id === parseInt(form.district))
+
     const payload = {
       firstname: form.firstname.trim(),
       lastname: form.lastname.trim(),
@@ -397,12 +315,11 @@ async function handleSubmit() {
       password: form.password,
       role: 'CLIENT',
       isActive: true, // Los clientes se crean como activos por defecto
-      isEmailVerified: true // También se marcan como verificados
-      // TODO: Campos de ubicación temporalmente deshabilitados hasta resolver problema del cliente Prisma
-      // department: form.department || undefined,
-      // province: form.province || undefined,
-      // district: form.district || undefined,
-      // address: form.address.trim() || undefined
+      isEmailVerified: true, // También se marcan como verificados
+      department: selectedDepartment?.name || undefined,
+      province: selectedProvince?.name || undefined,
+      district: selectedDistrict?.name || undefined,
+      address: form.address.trim() || undefined
     }
 
     console.log('🔄 Registrando cliente:', payload)
@@ -463,17 +380,20 @@ async function handleSubmit() {
 }
 
 // Lifecycle
-onMounted(() => {
+onMounted(async () => {
   console.log('🔄 ClientCreateRegisterView montado')
+  await loadDepartments()
 })
 </script>
 
 <style scoped>
 .client-register-container {
   min-height: 100vh;
-  background-color: #000;
+  background-color: #f8f9fa;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* Header */
@@ -485,6 +405,8 @@ onMounted(() => {
   position: sticky;
   top: 0;
   z-index: 1000;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .back-button {
@@ -538,6 +460,9 @@ onMounted(() => {
   border-radius: 16px;
   padding: 24px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .register-form {
@@ -638,6 +563,123 @@ onMounted(() => {
 }
 
 /* Responsive Design */
+/* Desktop - Centrar y limitar ancho */
+@media (min-width: 769px) {
+  .client-register-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    background-color: #f8f9fa;
+  }
+
+  .client-register-header {
+    width: 100%;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 1.5rem 2rem;
+  }
+
+  .form-container {
+    width: 100%;
+    max-width: 800px;
+    margin: 2rem auto;
+    padding: 2rem;
+  }
+
+  .register-form {
+    gap: 24px;
+  }
+
+  .form-row {
+    gap: 20px;
+  }
+
+  .form-input {
+    padding: 16px;
+    font-size: 16px;
+  }
+
+  .save-button {
+    max-width: 400px;
+    margin: 24px auto 0;
+  }
+}
+
+@media (min-width: 1024px) {
+  .client-register-header {
+    max-width: 900px;
+    padding: 1.75rem 2.5rem;
+  }
+
+  .form-container {
+    max-width: 900px;
+    padding: 2.5rem;
+    margin: 2.5rem auto;
+  }
+
+  .register-form {
+    gap: 28px;
+  }
+
+  .form-row {
+    gap: 24px;
+  }
+
+  .form-label {
+    font-size: 17px;
+  }
+
+  .form-input {
+    padding: 18px;
+    font-size: 17px;
+  }
+
+  .save-button {
+    max-width: 450px;
+    padding: 18px 32px;
+    font-size: 19px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .client-register-header {
+    max-width: 1000px;
+    padding: 2rem 3rem;
+  }
+
+  .form-container {
+    max-width: 1000px;
+    padding: 3rem;
+    margin: 3rem auto;
+  }
+
+  .register-form {
+    gap: 32px;
+  }
+
+  .form-row {
+    gap: 28px;
+  }
+
+  .form-label {
+    font-size: 18px;
+    margin-bottom: 10px;
+  }
+
+  .form-input {
+    padding: 20px;
+    font-size: 18px;
+  }
+
+  .save-button {
+    max-width: 500px;
+    padding: 20px 40px;
+    font-size: 20px;
+  }
+}
+
+/* Mobile */
 @media (max-width: 768px) {
   .client-register-container {
     padding: 0;
@@ -742,5 +784,27 @@ onMounted(() => {
   to {
     transform: rotate(360deg);
   }
+}
+</style>
+
+<style>
+/* Estilos globales para asegurar que la vista use todo el ancho */
+body:has(.client-register-container) {
+  display: block !important;
+  place-items: unset !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+#app:has(.client-register-container) {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: block !important;
+}
+
+router-view:has(.client-register-container) {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: block !important;
 }
 </style>

@@ -249,6 +249,11 @@ onMounted(() => {
   min-height: 100vh;
   background-color: #f5f5f5;
   padding: 20px;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .header {
@@ -259,6 +264,9 @@ onMounted(() => {
   padding: 15px;
   border-radius: 10px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .back-button {
@@ -282,6 +290,9 @@ onMounted(() => {
   padding: 25px;
   border-radius: 10px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .form {
@@ -336,5 +347,153 @@ onMounted(() => {
 .submit-button:disabled {
   background-color: #ccc;
   cursor: not-allowed;
+}
+
+/* Responsive Design - Desktop */
+@media (min-width: 769px) {
+  .pointsale-colab {
+    padding: 2rem;
+  }
+
+  .header {
+    max-width: 800px;
+    margin: 0 auto 2rem;
+    padding: 1.5rem 2rem;
+  }
+
+  .form-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .form {
+    gap: 24px;
+  }
+
+  .form-group {
+    gap: 10px;
+  }
+
+  .form-group label {
+    font-size: 15px;
+  }
+
+  .form-group input {
+    padding: 14px;
+    font-size: 15px;
+  }
+
+  .submit-button {
+    padding: 16px;
+    font-size: 17px;
+    max-width: 400px;
+    margin: 20px auto 0;
+    display: block;
+  }
+}
+
+@media (min-width: 1024px) {
+  .pointsale-colab {
+    padding: 2.5rem;
+  }
+
+  .header {
+    max-width: 900px;
+    padding: 1.75rem 2.5rem;
+  }
+
+  .form-container {
+    max-width: 900px;
+    padding: 2.5rem;
+  }
+
+  .form {
+    gap: 28px;
+  }
+
+  .form-group label {
+    font-size: 16px;
+  }
+
+  .form-group input {
+    padding: 16px;
+    font-size: 16px;
+  }
+
+  .submit-button {
+    padding: 18px;
+    font-size: 18px;
+    max-width: 450px;
+  }
+
+  .title {
+    font-size: 20px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .pointsale-colab {
+    padding: 3rem;
+  }
+
+  .header {
+    max-width: 1000px;
+    padding: 2rem 3rem;
+  }
+
+  .form-container {
+    max-width: 1000px;
+    padding: 3rem;
+  }
+
+  .form {
+    gap: 32px;
+  }
+
+  .form-group {
+    gap: 12px;
+  }
+
+  .form-group label {
+    font-size: 17px;
+  }
+
+  .form-group input {
+    padding: 18px;
+    font-size: 17px;
+  }
+
+  .submit-button {
+    padding: 20px;
+    font-size: 19px;
+    max-width: 500px;
+  }
+
+  .title {
+    font-size: 22px;
+  }
+}
+</style>
+
+<style>
+/* Estilos globales para asegurar que la vista use todo el ancho */
+body:has(.pointsale-colab) {
+  display: block !important;
+  place-items: unset !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+#app:has(.pointsale-colab) {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: block !important;
+}
+
+router-view:has(.pointsale-colab) {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: block !important;
 }
 </style>

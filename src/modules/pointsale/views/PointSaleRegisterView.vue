@@ -29,7 +29,7 @@
           <select
             id="department"
             v-model="form.departmentId"
-            @change="loadProvinces"
+            @change="onDepartmentChange"
             required
           >
             <option value="">Selecciona el departamento</option>
@@ -49,7 +49,7 @@
           <select
             id="province"
             v-model="form.provinceId"
-            @change="loadDistricts"
+            @change="onProvinceChange"
             required
             :disabled="!form.departmentId"
           >
@@ -155,18 +155,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/modules/auth/stores/auth.store'
 import {
   getBusinessData,
-  getAllDepartments,
-  getAllProvinces,
-  getAllDistricts,
   createPointSale,
   updatePointSale,
   getAllPointSales
 } from '@/api/lavanderiaApi'
+import { useUbigeo } from '@/composables/useUbigeo'
 
 const router = useRouter()
 const route = useRoute()
@@ -175,12 +173,12 @@ const authStore = useAuthStore()
 // Estados reactivos
 const loading = ref(false)
 const businessData = ref<any>(null)
-const departments = ref<any[]>([])
-const provinces = ref<any[]>([])
-const districts = ref<any[]>([])
 const isEditing = ref(false)
 const editingPointSaleId = ref<number | null>(null)
 const currentCollaborator = ref<any>(null)
+
+// Usar el composable de ubigeo
+const { departments, provinces, districts, loadDepartments, loadProvinces, loadDistricts, loadLocationByDistrict } = useUbigeo()
 
 // Formulario
 const form = ref({
@@ -203,49 +201,16 @@ function formatPhoneNumber() {
   form.value.phonenumber = form.value.phonenumber.replace(/\D/g, '')
 }
 
-// Cargar datos de ubicación
-async function loadDepartments() {
-  try {
-    const data = await getAllDepartments()
-    departments.value = data
-    console.log('✅ Departamentos cargados:', data)
-  } catch (error) {
-    console.error('❌ Error al cargar departamentos:', error)
-  }
+// Funciones para manejar cambios de ubicación usando el composable
+async function onDepartmentChange() {
+  form.value.provinceId = ''
+  form.value.districtId = ''
+  await loadProvinces(form.value.departmentId)
 }
 
-async function loadProvinces() {
-  if (!form.value.departmentId) {
-    provinces.value = []
-    districts.value = []
-    form.value.provinceId = ''
-    form.value.districtId = ''
-    return
-  }
-
-  try {
-    const data = await getAllProvinces()
-    provinces.value = data.filter((prov: any) => prov.departmentId === parseInt(form.value.departmentId))
-    console.log('✅ Provincias cargadas:', provinces.value)
-  } catch (error) {
-    console.error('❌ Error al cargar provincias:', error)
-  }
-}
-
-async function loadDistricts() {
-  if (!form.value.provinceId) {
-    districts.value = []
-    form.value.districtId = ''
-    return
-  }
-
-  try {
-    const data = await getAllDistricts()
-    districts.value = data.filter((dist: any) => dist.provinceId === parseInt(form.value.provinceId))
-    console.log('✅ Distritos cargados:', districts.value)
-  } catch (error) {
-    console.error('❌ Error al cargar distritos:', error)
-  }
+async function onProvinceChange() {
+  form.value.districtId = ''
+  await loadDistricts(form.value.provinceId)
 }
 
 // Validar que existe un business
@@ -269,39 +234,72 @@ async function validateBusiness() {
 // Cargar datos de un punto de venta existente para edición
 async function loadExistingPointSale(pointSaleId: number) {
   try {
+    console.log('🔄 Cargando datos del punto de venta ID:', pointSaleId)
+    
+    // Cargar todos los datos de ubicación primero
+    await loadDepartments()
+    
     const pointSales = await getAllPointSales()
     const existingPointSale = pointSales.find((ps: any) => ps.id === pointSaleId)
 
-    if (existingPointSale) {
-      form.value = {
-        name: existingPointSale.name,
-        departmentId: '',
-        provinceId: '',
-        districtId: '',
-        address: existingPointSale.address,
-        phonenumber: existingPointSale.phonenumber
-      }
-
-      // Cargar ubicación si está disponible
-      if (existingPointSale.district?.province?.department) {
-        form.value.departmentId = existingPointSale.district.province.department.id.toString()
-        await loadProvinces()
-        form.value.provinceId = existingPointSale.district.province.id.toString()
-        await loadDistricts()
-        form.value.districtId = existingPointSale.district.id.toString()
-      }
-
-      // Cargar datos del colaborador si existe
-      if (existingPointSale.colaborador) {
-        currentCollaborator.value = existingPointSale.colaborador
-        console.log('✅ Colaborador actual cargado:', existingPointSale.colaborador)
-      } else {
-        currentCollaborator.value = null
-        console.log('ℹ️ No hay colaborador asignado a este punto de venta')
-      }
-
-      console.log('✅ Datos de punto de venta cargados para edición:', existingPointSale)
+    if (!existingPointSale) {
+      console.error('❌ No se encontró el punto de venta con ID:', pointSaleId)
+      return
     }
+
+    console.log('📦 Datos del punto de venta encontrado:', existingPointSale)
+    
+    // Establecer datos básicos del formulario
+    form.value = {
+      name: existingPointSale.name || '',
+      departmentId: '',
+      provinceId: '',
+      districtId: '',
+      address: existingPointSale.address || '',
+      phonenumber: existingPointSale.phonenumber || ''
+    }
+
+      // Cargar ubicación usando el composable
+      if (existingPointSale.district?.id) {
+        const location = await loadLocationByDistrict(existingPointSale.district.id)
+        if (location) {
+          form.value.departmentId = location.departmentId.toString()
+          await nextTick()
+          form.value.provinceId = location.provinceId.toString()
+          await nextTick()
+          form.value.districtId = location.districtId.toString()
+          console.log('✅ Ubicación cargada:', {
+            department: form.value.departmentId,
+            province: form.value.provinceId,
+            district: form.value.districtId
+          })
+        }
+      } else if (existingPointSale.districtId) {
+        const location = await loadLocationByDistrict(existingPointSale.districtId)
+        if (location) {
+          form.value.departmentId = location.departmentId.toString()
+          await nextTick()
+          form.value.provinceId = location.provinceId.toString()
+          await nextTick()
+          form.value.districtId = location.districtId.toString()
+          console.log('✅ Ubicación cargada:', {
+            department: form.value.departmentId,
+            province: form.value.provinceId,
+            district: form.value.districtId
+          })
+        }
+      } else {
+        console.log('ℹ️ Este punto de venta no tiene información de ubicación. Los campos de ubicación quedarán vacíos.')
+      }
+
+    // Cargar datos del colaborador si existe
+    if (existingPointSale.colaborador) {
+      currentCollaborator.value = existingPointSale.colaborador
+      console.log('✅ Colaborador actual cargado')
+    } else {
+      currentCollaborator.value = null
+    }
+
   } catch (error) {
     console.error('❌ Error al cargar datos del punto de venta:', error)
   }
@@ -327,11 +325,16 @@ async function onSubmit() {
     }
 
     // Preparar datos del punto de venta
-    const pointSaleData = {
+    const pointSaleData: any = {
       name: form.value.name,
       address: form.value.address,
       phonenumber: form.value.phonenumber,
       businesId: businessData.value.id
+    }
+
+    // Incluir districtId si está seleccionado
+    if (form.value.districtId) {
+      pointSaleData.districtId = parseInt(form.value.districtId)
     }
 
             // Crear o actualizar punto de venta
@@ -401,6 +404,8 @@ onMounted(async () => {
   if (editMode && pointSaleId) {
     isEditing.value = true
     editingPointSaleId.value = pointSaleId
+    // Esperar un momento para que los departamentos se carguen completamente
+    await nextTick()
     await loadExistingPointSale(pointSaleId)
   }
 })
@@ -411,6 +416,11 @@ onMounted(async () => {
   min-height: 100vh;
   background-color: #f5f5f5;
   padding: 20px;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .header {
@@ -421,6 +431,9 @@ onMounted(async () => {
   padding: 15px;
   border-radius: 10px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .back-button {
@@ -444,6 +457,9 @@ onMounted(async () => {
   padding: 25px;
   border-radius: 10px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .form {
@@ -586,5 +602,168 @@ onMounted(async () => {
 
 .create-collaborator-btn:hover {
   background-color: #218838;
+}
+
+/* Responsive Design - Desktop */
+@media (min-width: 769px) {
+  .pointsale-register {
+    padding: 2rem;
+  }
+
+  .header {
+    max-width: 800px;
+    margin: 0 auto 2rem;
+    padding: 1.5rem 2rem;
+  }
+
+  .form-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .form {
+    gap: 24px;
+  }
+
+  .form-group {
+    gap: 10px;
+  }
+
+  .form-group label {
+    font-size: 15px;
+  }
+
+  .form-group input,
+  .form-group select {
+    padding: 14px;
+    font-size: 15px;
+  }
+
+  .submit-button {
+    padding: 16px;
+    font-size: 17px;
+    max-width: 400px;
+    margin: 20px auto 0;
+    display: block;
+  }
+}
+
+@media (min-width: 1024px) {
+  .pointsale-register {
+    padding: 2.5rem;
+  }
+
+  .header {
+    max-width: 900px;
+    padding: 1.75rem 2.5rem;
+  }
+
+  .form-container {
+    max-width: 900px;
+    padding: 2.5rem;
+  }
+
+  .form {
+    gap: 28px;
+  }
+
+  .form-group label {
+    font-size: 16px;
+  }
+
+  .form-group input,
+  .form-group select {
+    padding: 16px;
+    font-size: 16px;
+  }
+
+  .submit-button {
+    padding: 18px;
+    font-size: 18px;
+    max-width: 450px;
+  }
+
+  .section-title {
+    font-size: 18px;
+  }
+
+  .collaborator-section {
+    padding: 24px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .pointsale-register {
+    padding: 3rem;
+  }
+
+  .header {
+    max-width: 1000px;
+    padding: 2rem 3rem;
+  }
+
+  .form-container {
+    max-width: 1000px;
+    padding: 3rem;
+  }
+
+  .form {
+    gap: 32px;
+  }
+
+  .form-group {
+    gap: 12px;
+  }
+
+  .form-group label {
+    font-size: 17px;
+  }
+
+  .form-group input,
+  .form-group select {
+    padding: 18px;
+    font-size: 17px;
+  }
+
+  .submit-button {
+    padding: 20px;
+    font-size: 19px;
+    max-width: 500px;
+  }
+
+  .title {
+    font-size: 22px;
+  }
+
+  .section-title {
+    font-size: 19px;
+  }
+
+  .collaborator-section {
+    padding: 28px;
+  }
+}
+</style>
+
+<style>
+/* Estilos globales para asegurar que la vista use todo el ancho */
+body:has(.pointsale-register) {
+  display: block !important;
+  place-items: unset !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+#app:has(.pointsale-register) {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: block !important;
+}
+
+router-view:has(.pointsale-register) {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: block !important;
 }
 </style>

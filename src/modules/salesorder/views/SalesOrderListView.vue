@@ -135,6 +135,10 @@
               <span class="label">Total:</span> 
               <span class="amount">S/. {{ formatPrice(salesOrder.total) }}</span>
             </p>
+            <p class="service-balance">
+              <span class="label">Saldo:</span> 
+              <span class="amount">S/. {{ formatPrice(calculateBalance(salesOrder)) }}</span>
+            </p>
             <p class="payment-status" :class="getPaymentStatusClass(salesOrder.statusPay)">
               {{ getPaymentStatusLabel(salesOrder.statusPay) }}
             </p>
@@ -305,6 +309,40 @@ const getOrderStatusClass = (status: string): string => {
     'DELIVERED': 'status-delivered'
   }
   return statusMap[status] || 'status-received'
+}
+
+const calculateBalance = (salesOrder: any) => {
+  // El balance es el total menos lo pagado
+  if (!salesOrder) {
+    console.warn('⚠️ Orden de venta sin datos:', salesOrder?.id)
+    return 0
+  }
+  
+  const total = Number(salesOrder.total) || 0
+  
+  // Verificar si el salesorder incluye los pagos
+  if (salesOrder.payments && Array.isArray(salesOrder.payments)) {
+    // Calcular el total pagado sumando todos los pagos
+    const totalPaid = salesOrder.payments.reduce((sum: number, payment: any) => {
+      const amount = Number(payment.amount || 0)
+      return sum + amount
+    }, 0)
+    
+    const balance = total - totalPaid
+    return Math.max(0, balance) // Asegurar que el saldo no sea negativo
+  }
+  
+  // Si no hay pagos en el objeto, usar el statusPay como fallback
+  if (salesOrder.statusPay === 'PAID') {
+    return 0
+  } else if (salesOrder.statusPay === 'PARTIAL') {
+    // Si es parcial, no podemos calcular el saldo exacto sin los pagos
+    // Retornar el total como saldo pendiente (será actualizado cuando se carguen los pagos)
+    return total
+  }
+  
+  // Si es UNPAID, el saldo es igual al total
+  return total
 }
 
 const loadBusinesses = async () => {
@@ -745,6 +783,22 @@ onMounted(async () => {
 .status-paid {
   background-color: #d4edda;
   color: #155724;
+}
+
+.service-balance {
+  font-size: 0.875rem;
+  margin: 0.25rem 0;
+}
+
+.service-balance .label {
+  color: #666;
+  font-weight: 500;
+}
+
+.service-balance .amount {
+  color: #d63031;
+  font-weight: 600;
+  margin-left: 0.25rem;
 }
 
 .pieces-count {

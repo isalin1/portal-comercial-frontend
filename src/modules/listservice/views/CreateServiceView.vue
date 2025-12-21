@@ -136,10 +136,11 @@ import { ref, reactive, onMounted, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { createServiceCategory, createListService, getListServices, getServiceCategories, getServiceEnums } from '@/api/lavanderiaApi'
 import { lavanderiaApi } from '@/api/lavanderiaApi'
-
+import { useAuthStore } from '@/modules/auth/stores/auth.store'
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 const loading = ref(false)
 const isCategoryLocked = ref(false)
 const availableTypes = ref<string[]>([])
@@ -328,16 +329,42 @@ async function validateServiceType(serviceType: string, businesId: number, categ
 // Función para obtener el businessId del usuario logueado
 async function getUserBusinessId() {
   try {
+    const user = authStore.user
     const { data } = await lavanderiaApi.get('/busines')
-    console.log('📦 Negocios del usuario:', data)
-    if (data && data.length > 0) {
-      businesId.value = data[0].id
-      console.log('✅ BusinessId obtenido:', businesId.value)
-      return businesId.value
+    console.log('📦 Todos los negocios:', data)
+    console.log('👤 Usuario actual:', { id: user?.id, role: user?.role })
+    
+    if (!user) {
+      console.error('❌ No hay usuario autenticado')
+      return null
+    }
+    
+    // Para ADMIN, buscar su negocio específico
+    if (user.role === 'ADMIN') {
+      const userBusiness = data.find((b: any) => b.userId === user.id)
+      if (userBusiness) {
+        businesId.value = userBusiness.id
+        console.log('✅ BusinessId del ADMIN obtenido:', businesId.value, '| Negocio:', userBusiness.name)
+        return businesId.value
+      } else {
+        console.error('❌ El ADMIN no tiene un negocio registrado')
+        alert('No tienes un negocio registrado. Por favor, crea un negocio primero.')
+        router.push({ name: 'business-register' })
+        return null
+      }
+    } else if (user.role === 'SUPERADMIN') {
+      // Para SUPERADMIN, usar el primer negocio disponible
+      if (data && data.length > 0) {
+        businesId.value = data[0].id
+        console.log('✅ BusinessId del SUPERADMIN obtenido:', businesId.value)
+        return businesId.value
+      } else {
+        console.error('❌ No hay negocios registrados')
+        alert('No hay negocios registrados en el sistema.')
+        return null
+      }
     } else {
-      console.error('❌ El usuario no tiene negocios registrados')
-      alert('No tienes un negocio registrado. Por favor, crea un negocio primero.')
-      router.push({ name: 'business-register' })
+      console.error('❌ Rol no permitido para crear servicios:', user.role)
       return null
     }
   } catch (error) {
@@ -525,11 +552,16 @@ async function handleSubmit() {
 
     // Crear el servicio
     const serviceData = {
-      type: form.typeName,
+      type: form.typeName as any, // Asegurar que el tipo coincida con el enum
       basePrice: parseFloat(form.price),
       isActive: true,
       servicecategoryId: servicecategoryId
     }
+
+    console.log('📝 Datos del servicio a crear:', serviceData)
+    console.log('📝 Tipo de servicio:', typeof serviceData.type, serviceData.type)
+    console.log('📝 Precio:', typeof serviceData.basePrice, serviceData.basePrice)
+    console.log('📝 Categoría ID:', typeof serviceData.servicecategoryId, serviceData.servicecategoryId)
 
     const createdService = await createListService(serviceData)
     console.log('✅ Servicio creado exitosamente:', createdService)
@@ -545,9 +577,18 @@ async function handleSubmit() {
     // Regresar a la vista de servicios
     router.push({ name: 'list-presentation' })
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error al guardar servicio:', error)
-    alert('Error al guardar el servicio')
+    
+    let errorMessage = 'Error al guardar el servicio'
+    
+    if (error.response?.data?.message) {
+      errorMessage = error.response.data.message
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+    
+    alert(errorMessage)
   } finally {
     loading.value = false
   }

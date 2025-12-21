@@ -362,6 +362,8 @@ onMounted(() => {
   min-height: 100vh;
   background-color: #f8f9fa;
   padding-bottom: 2rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* Header */
@@ -375,6 +377,8 @@ onMounted(() => {
   position: sticky;
   top: 0;
   z-index: 100;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .back-button {
@@ -407,12 +411,14 @@ onMounted(() => {
 
 /* Content */
 .content {
-  max-width: 800px;
+  width: 100%;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  box-sizing: border-box;
 }
 
 /* Section */
@@ -647,6 +653,95 @@ onMounted(() => {
 }
 
 /* Responsive */
+@media (min-width: 769px) {
+  .profile-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .profile-header {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem 2rem;
+  }
+
+  .content {
+    padding: 2rem;
+    gap: 2rem;
+  }
+
+  .section {
+    padding: 2rem;
+  }
+
+  .info-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+  }
+
+  .info-label {
+    font-size: 1rem;
+    min-width: 200px;
+  }
+
+  .info-value {
+    font-size: 1.125rem;
+    text-align: right;
+    flex: 1;
+  }
+}
+
+@media (min-width: 1024px) {
+  .content {
+    padding: 2.5rem 3rem;
+    max-width: 1000px;
+  }
+
+  .section {
+    padding: 2.5rem;
+  }
+
+  .section-title {
+    font-size: 1.5rem;
+  }
+
+  .info-row {
+    padding: 1.25rem 2rem;
+  }
+
+  .info-label {
+    min-width: 220px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .content {
+    padding: 3rem 4rem;
+    max-width: 1200px;
+  }
+
+  .section {
+    padding: 3rem;
+  }
+
+  .info-row {
+    padding: 1.5rem 2.5rem;
+  }
+
+  .info-label {
+    min-width: 250px;
+    font-size: 1.125rem;
+  }
+
+  .info-value {
+    font-size: 1.25rem;
+  }
+}
+
 @media (max-width: 768px) {
   .content {
     padding: 1rem;
@@ -659,6 +754,37 @@ onMounted(() => {
   .form-actions {
     flex-direction: column;
   }
+
+  .info-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .info-value {
+    text-align: left;
+  }
+}
+</style>
+
+<style>
+/* Estilos globales para asegurar que la vista use todo el ancho */
+body:has(.profile-container) {
+  display: block !important;
+  place-items: unset !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+#app:has(.profile-container) {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: block !important;
+}
+
+router-view:has(.profile-container) {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: block !important;
 }
 </style>
 
