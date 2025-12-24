@@ -123,9 +123,9 @@ router.beforeEach(async (to, from, next) => {
     console.log('🔍 Rol del usuario (uppercase):', userRole)
     console.log('🔍 Roles permitidos:', allowedRoles)
 
-    if (Array.isArray(allowedRoles) && !allowedRoles.includes(userRole)) {
+    if (Array.isArray(allowedRoles) && !allowedRoles.includes(userRole) && to.path !== '/list-presentation') {
       console.log('❌ Rol no autorizado')
-      alert('No autorizado')
+      alert('NoO autorizado')
       return next(from.fullPath)
     }
     
