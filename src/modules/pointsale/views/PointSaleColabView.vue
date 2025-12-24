@@ -213,9 +213,21 @@ async function onSubmit() {
     // Navegar de vuelta a la presentación del negocio
     router.push({ name: 'business-presentation' })
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Error al crear colaborador:', error)
-    alert('Error al registrar el colaborador')
+    console.error('❌ Error response:', error.response)
+    
+    let errorMessage = 'Error al registrar el colaborador'
+    
+    if (error.response?.data?.message) {
+      errorMessage = error.response.data.message
+    } else if (error.response?.data?.error) {
+      errorMessage = error.response.data.error
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+    
+    alert(`❌ ${errorMessage}`)
   } finally {
     loading.value = false
   }

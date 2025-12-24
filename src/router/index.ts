@@ -14,7 +14,7 @@ import DashboardClientView from '@/views/DashboardClientView.vue'
 import { useAuthStore } from '@/modules/auth/stores/auth.store'
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: createWebHistory(import.meta.env.BASE_URL || '/'),
   routes: [
     { path: '/', redirect: { name: 'auth-presentation' } },
     ...authRoutes,

@@ -31,8 +31,8 @@
           </select>
         </div>
 
-        <!-- SUPERADMIN y ADMIN: Seleccionar Punto de Venta -->
-        <div v-if="userRole === 'SUPERADMIN' || userRole === 'ADMIN'" class="form-group">
+        <!-- SUPERADMIN: Siempre mostrar selector -->
+        <div v-if="userRole === 'SUPERADMIN'" class="form-group">
           <label class="form-label">Punto de Venta *</label>
           <select 
             v-model="selectedPointSaleId" 
@@ -44,6 +44,27 @@
               {{ pointsale.name }} - {{ pointsale.address }}
             </option>
           </select>
+        </div>
+
+        <!-- ADMIN: Mostrar selector solo si tiene más de un punto de venta -->
+        <div v-if="userRole === 'ADMIN' && pointsales.length > 1" class="form-group">
+          <label class="form-label">Punto de Venta *</label>
+          <select 
+            v-model="selectedPointSaleId" 
+            class="form-select"
+            :disabled="!!existingOrderData"
+          >
+            <option value="">Seleccionar Punto de Venta</option>
+            <option v-for="pointsale in pointsales" :key="pointsale.id" :value="pointsale.id">
+              {{ pointsale.name }} - {{ pointsale.address }}
+            </option>
+          </select>
+        </div>
+
+        <!-- ADMIN: Mostrar información si tiene un solo punto de venta -->
+        <div v-if="userRole === 'ADMIN' && pointsales.length === 1" class="info-box">
+          <p><strong>Punto de Venta:</strong> {{ pointsales[0]?.name || 'Cargando...' }}</p>
+          <p><strong>Dirección:</strong> {{ pointsales[0]?.address || '' }}</p>
         </div>
 
         <!-- COLABORADOR: Mostrar punto de venta asignado -->
@@ -149,13 +170,21 @@
 
             <div class="form-group">
               <label class="form-label">Tipo</label>
-              <select v-model="item.serviceId" class="form-select" @change="onServiceChange(index)">
+              <select 
+                v-model="item.serviceId" 
+                class="form-select" 
+                @change="onServiceChange(index)"
+                :disabled="userRole === 'ADMIN' && !selectedPointSaleId"
+              >
                 <option value="">Seleccionar</option>
                 <option v-for="service in getServicesForCategory(item.categoryId)" :key="service.id" :value="service.id">
                   {{ getServiceTypeLabel(service.type) }}
                 </option>
               </select>
               <div class="form-display">{{ getServiceTypeLabel(getSelectedServiceType(item.serviceId)) }}</div>
+              <p v-if="userRole === 'ADMIN' && !selectedPointSaleId" class="form-hint">
+                ⚠️ Debe seleccionar un punto de venta primero
+              </p>
             </div>
           </div>
 
@@ -273,9 +302,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { lavanderiaApi, getClients } from '@/api/lavanderiaApi'
+import { lavanderiaApi, getClients, getPointSaleServices, getListServices } from '@/api/lavanderiaApi'
 import { useAuthStore } from '@/modules/auth/stores/auth.store'
 
 // Types
@@ -578,8 +607,23 @@ const loadPointSalesForAdmin = async () => {
       pointsales.value = userBusiness.pointsales || []
       console.log('✅ Puntos de venta cargados:', pointsales.value.length, pointsales.value)
       
-      // Cargar categorías y servicios para este negocio
-      await loadCategoriesAndServices(businesId)
+      // Si el ADMIN tiene un solo punto de venta, seleccionarlo automáticamente
+      if (pointsales.value.length === 1) {
+        selectedPointSaleId.value = pointsales.value[0].id
+        console.log('✅ ADMIN con un solo punto de venta - seleccionado automáticamente:', selectedPointSaleId.value)
+        // Cargar categorías y servicios del punto de venta seleccionado
+        await loadCategoriesForBusiness(businesId)
+        await loadServicesForPointSale(Number(selectedPointSaleId.value))
+      } else if (pointsales.value.length === 0) {
+        console.warn('⚠️ ADMIN sin puntos de venta asignados')
+        alert('No tienes puntos de venta asignados. Por favor, crea un punto de venta primero.')
+        router.push({ name: 'business-presentation' })
+        return
+      } else {
+        // Si tiene múltiples puntos de venta, cargar solo categorías hasta que seleccione uno
+        await loadCategoriesForBusiness(businesId)
+        services.value = [] // Limpiar servicios hasta que se seleccione un punto de venta
+      }
     } else {
       alert('No tienes un negocio registrado. Por favor, crea un negocio primero.')
       router.push({ name: 'business-presentation' })
@@ -622,6 +666,193 @@ const loadAssignedPointSale = async () => {
   }
 }
 
+// Cargar solo categorías (sin servicios)
+const loadCategoriesForBusiness = async (businesId: number) => {
+  try {
+    console.log('🔄 Cargando categorías para businesId:', businesId)
+    
+    const { data } = await lavanderiaApi.get(`/servicecategory?businesId=${businesId}`)
+    categories.value = data
+    
+    console.log('✅ Categorías cargadas:', categories.value)
+  } catch (error) {
+    console.error('❌ Error cargando categorías:', error)
+  }
+}
+
+// Cargar servicios para un punto de venta específico
+const loadServicesForPointSale = async (pointsaleId: number) => {
+  try {
+    console.log('🔄 Cargando servicios para punto de venta:', pointsaleId)
+    
+    // Obtener el punto de venta para conocer su businesId
+    const pointsale = pointsales.value.find((ps: any) => ps.id === pointsaleId)
+    if (!pointsale) {
+      console.error('❌ Punto de venta no encontrado:', pointsaleId)
+      services.value = []
+      return
+    }
+    
+    const businesId = pointsale.businesId || selectedBusinessId.value
+    if (!businesId) {
+      console.error('❌ No se pudo obtener businesId para el punto de venta')
+      services.value = []
+      return
+    }
+    
+    console.log('🏢 BusinesId del punto de venta:', businesId)
+    
+    // 1. Obtener servicios personalizados del punto de venta (si existen)
+    const pointSaleServices = await getPointSaleServices(pointsaleId)
+    console.log('📦 Servicios personalizados del punto de venta:', pointSaleServices)
+    
+    // 2. Obtener servicios base del negocio
+    const baseServices = await getListServices(businesId)
+    console.log('📦 Servicios base del negocio (total):', baseServices.length)
+    console.log('📦 Servicios base del negocio (detalles):', baseServices.map((bs: any) => ({
+      id: bs.id,
+      type: bs.type,
+      servicecategoryId: bs.servicecategoryId,
+      categoryName: bs.servicecategory?.name || 'N/A',
+      categoryType: bs.servicecategory?.categoryType || 'N/A',
+      isActive: bs.isActive,
+      basePrice: bs.basePrice
+    })))
+    
+    // Verificar específicamente servicios de LAVADO en baseServices
+    const lavadoBaseServices = baseServices.filter((bs: any) => bs.servicecategory?.categoryType === 'LAVADO')
+    console.log('🧼 Servicios base de LAVADO:', lavadoBaseServices.length, lavadoBaseServices.map((bs: any) => ({
+      id: bs.id,
+      type: bs.type,
+      isActive: bs.isActive
+    })))
+    console.log('📦 Servicios base del negocio (detalles):', baseServices.map((s: any) => ({
+      id: s.id,
+      type: s.type,
+      categoryId: s.servicecategoryId,
+      isActive: s.isActive,
+      basePrice: s.basePrice
+    })))
+    
+    // 3. Crear un mapa de servicios personalizados por listserviceId
+    const personalizedServicesMap = new Map<number, any>()
+    pointSaleServices.forEach((ps: any) => {
+      if (ps.listservice && ps.listservice.id) {
+        personalizedServicesMap.set(ps.listservice.id, ps)
+        console.log(`📦 Servicio personalizado mapeado: ${ps.listservice.type} (ID: ${ps.listservice.id}), isActive: ${ps.isActive}`)
+      }
+    })
+    console.log('📦 IDs de servicios personalizados mapeados:', Array.from(personalizedServicesMap.keys()))
+    
+    // Verificar específicamente servicios de LAVADO en pointSaleServices
+    const lavadoPersonalizedServices = pointSaleServices.filter((ps: any) => ps.listservice?.servicecategory?.categoryType === 'LAVADO')
+    console.log('🧼 Servicios personalizados de LAVADO:', lavadoPersonalizedServices.length, lavadoPersonalizedServices.map((ps: any) => ({
+      id: ps.listservice?.id,
+      type: ps.listservice?.type,
+      isActive: ps.isActive
+    })))
+    
+    // 4. Combinar servicios: usar personalizados si existen, sino usar base
+    const combinedServices: any[] = []
+    
+    baseServices.forEach((baseService: any) => {
+      const personalizedService = personalizedServicesMap.get(baseService.id)
+      
+      if (personalizedService) {
+        // Usar servicio personalizado (con precio y estado personalizado)
+        const serviceCategoryId = personalizedService.listservice?.servicecategoryId || baseService.servicecategoryId
+        const isLavado = baseService.servicecategory?.categoryType === 'LAVADO'
+        if (isLavado) {
+          console.log(`✅ Servicio ${baseService.type} (ID: ${baseService.id}) tiene personalización, servicecategoryId: ${serviceCategoryId}, isActive: ${personalizedService.isActive}`)
+        }
+        combinedServices.push({
+          id: personalizedService.listservice.id,
+          type: personalizedService.listservice.type,
+          basePrice: personalizedService.price, // Precio personalizado
+          isActive: personalizedService.isActive, // Estado personalizado
+          servicecategoryId: serviceCategoryId,
+          servicecategory: personalizedService.listservice.servicecategory || baseService.servicecategory,
+          pointsaleServiceId: personalizedService.id,
+          pointsaleId: pointsaleId
+        })
+      } else {
+        // Usar servicio base (con precio y estado base)
+        const isLavado = baseService.servicecategory?.categoryType === 'LAVADO'
+        if (isLavado) {
+          console.log(`✅ Servicio ${baseService.type} (ID: ${baseService.id}) usando base, servicecategoryId: ${baseService.servicecategoryId}, isActive: ${baseService.isActive}`)
+        }
+        combinedServices.push({
+          id: baseService.id,
+          type: baseService.type,
+          basePrice: baseService.basePrice,
+          isActive: baseService.isActive,
+          servicecategoryId: baseService.servicecategoryId,
+          servicecategory: baseService.servicecategory,
+          pointsaleServiceId: null, // No tiene personalización
+          pointsaleId: pointsaleId
+        })
+      }
+    })
+    
+    console.log('📦 Servicios combinados (antes de filtrar activos):', combinedServices.length)
+    console.log('📦 Servicios combinados (detalles):', combinedServices.map((s: any) => ({
+      id: s.id,
+      type: s.type,
+      categoryId: s.servicecategoryId,
+      isActive: s.isActive,
+      categoryName: s.servicecategory?.name || 'N/A'
+    })))
+    
+    // Filtrar solo servicios activos
+    const activeServices = combinedServices.filter((s: any) => s.isActive)
+    const inactiveServices = combinedServices.filter((s: any) => !s.isActive)
+    
+    if (inactiveServices.length > 0) {
+      console.warn('⚠️ Servicios inactivos encontrados (no se mostrarán):', inactiveServices.map((s: any) => ({
+        id: s.id,
+        type: s.type,
+        categoryName: s.servicecategory?.name || 'N/A',
+        categoryType: s.servicecategory?.categoryType || 'N/A',
+        isActive: s.isActive
+      })))
+    }
+    
+    // Verificar específicamente si hay servicios de LAVADO antes de filtrar
+    const lavadoServicesBeforeFilter = combinedServices.filter((s: any) => s.servicecategory?.categoryType === 'LAVADO')
+    console.log('🧼 Servicios de LAVADO (antes de filtrar activos):', lavadoServicesBeforeFilter.map((s: any) => ({
+      id: s.id,
+      type: s.type,
+      isActive: s.isActive
+    })))
+    
+    services.value = activeServices
+    
+    console.log('📦 Servicios activos (después de filtrar):', services.value.length)
+    console.log('📦 Servicios activos (detalles):', services.value.map((s: any) => ({
+      id: s.id,
+      type: s.type,
+      categoryId: s.servicecategoryId,
+      categoryName: s.servicecategory?.name || 'N/A',
+      isActive: s.isActive
+    })))
+    
+    // Verificar específicamente servicios de LAVADO
+    const lavadoServices = services.value.filter((s: any) => s.servicecategory?.categoryType === 'LAVADO')
+    console.log('🧼 Servicios de LAVADO activos:', lavadoServices.length, lavadoServices.map((s: any) => ({
+      id: s.id,
+      type: s.type,
+      isActive: s.isActive
+    })))
+    
+    console.log('✅ Servicios cargados para punto de venta:', services.value.length)
+    console.log('✅ Servicios (combinados):', services.value)
+  } catch (error) {
+    console.error('❌ Error cargando servicios del punto de venta:', error)
+    services.value = []
+  }
+}
+
+// Cargar categorías y servicios (para SUPERADMIN y COLABORADOR)
 const loadCategoriesAndServices = async (businesId: number) => {
   try {
     console.log('🔄 Cargando categorías y servicios para businesId:', businesId)
@@ -643,14 +874,69 @@ const loadCategoriesAndServices = async (businesId: number) => {
 
 
 const getServicesForCategory = (categoryId: number) => {
-  const filtered = services.value.filter(s => s.servicecategoryId === categoryId)
+  // Para ADMIN: solo mostrar servicios si hay un punto de venta seleccionado
+  if (userRole.value === 'ADMIN' && !selectedPointSaleId.value) {
+    return []
+  }
   
-  // Log para diagnóstico
-  if (filtered.length > 0) {
-    const category = categories.value.find(c => c.id === categoryId)
-    if (category?.categoryType === 'EDREDONES') {
-      console.log('🔍 Servicios de EDREDONES disponibles:', filtered.map(s => ({ id: s.id, type: s.type, name: getServiceTypeLabel(s.type) })))
+  const category = categories.value.find(c => c.id === categoryId)
+  console.log('🔍 Buscando servicios para categoría:', category?.name, 'categoryId:', categoryId, 'categoryType:', category?.categoryType)
+  console.log('📦 Total de servicios disponibles:', services.value.length)
+  console.log('📦 Servicios disponibles (todos - DETALLADO):', services.value.map(s => ({ 
+    id: s.id, 
+    type: s.type, 
+    categoryId: s.servicecategoryId,
+    categoryIdType: typeof s.servicecategoryId,
+    categoryName: s.servicecategory?.name || 'N/A',
+    categoryType: s.servicecategory?.categoryType || 'N/A',
+    isActive: s.isActive,
+    name: getServiceTypeLabel(s.type),
+    fullService: s // Incluir el objeto completo para debugging
+  })))
+  
+  // Normalizar categoryId para comparación (asegurar que sea número)
+  const normalizedCategoryId = Number(categoryId)
+  const categoryType = category?.categoryType
+  
+  const filtered = services.value.filter(s => {
+    const serviceCategoryId = Number(s.servicecategoryId)
+    const serviceCategoryType = s.servicecategory?.categoryType
+    
+    // Primero intentar coincidencia por categoryId
+    const matchesById = serviceCategoryId === normalizedCategoryId
+    
+    // También verificar por categoryType (por si hay categorías duplicadas con diferentes IDs)
+    const matchesByType = categoryType && serviceCategoryType === categoryType
+    
+    // Coincide si coincide por ID O por tipo (y el tipo no es null/undefined)
+    const matches = matchesById || (matchesByType && categoryType)
+    
+    // Log detallado para servicios de LAVADO
+    if (category?.categoryType === 'LAVADO') {
+      if (matches) {
+        const matchReason = matchesById ? 'ID' : (matchesByType ? 'TIPO' : 'NINGUNO')
+        console.log(`✅ Servicio ${s.type} (ID: ${s.id}) COINCIDE con LAVADO - servicecategoryId: ${serviceCategoryId}, categoryId buscado: ${normalizedCategoryId}, matchBy: ${matchReason}, isActive: ${s.isActive}`)
+      } else {
+        console.log(`⚠️ Servicio ${s.type} (ID: ${s.id}) NO coincide - servicecategoryId: ${serviceCategoryId}, categoryType: ${serviceCategoryType}, buscando categoryId: ${normalizedCategoryId}, buscando categoryType: ${categoryType}, isActive: ${s.isActive}`)
+      }
     }
+    
+    return matches
+  })
+  
+  console.log(`✅ Servicios filtrados para categoría "${category?.name}" (categoryId: ${normalizedCategoryId}):`, filtered.length)
+  console.log('✅ Servicios filtrados (detalles):', filtered.map(s => ({ 
+    id: s.id, 
+    type: s.type, 
+    name: getServiceTypeLabel(s.type),
+    servicecategoryId: s.servicecategoryId,
+    isActive: s.isActive
+  })))
+  
+  // Si es LAVADO y solo hay un servicio, verificar si hay más servicios en la base de datos
+  if (category?.categoryType === 'LAVADO' && filtered.length === 1) {
+    console.warn('⚠️ Solo se encontró 1 servicio para LAVADO. Verificando si hay más servicios en la base de datos...')
+    console.log('📋 Servicio encontrado:', filtered[0].type)
   }
   
   return filtered
@@ -746,9 +1032,63 @@ const onCategoryChange = async (index: number) => {
   }
 }
 
+// Función para cuando cambia el punto de venta (ADMIN)
+const onPointSaleChange = async () => {
+  if (userRole.value === 'ADMIN' && selectedPointSaleId.value) {
+    console.log('🔄 Punto de venta cambiado a:', selectedPointSaleId.value)
+    
+    // Limpiar servicios y items actuales
+    services.value = []
+    serviceItems.value.forEach(item => {
+      item.serviceId = 0
+      item.unitPrice = 0
+      item.subtotal = 0
+      item.subtotalWithDiscount = 0
+    })
+    
+    // Cargar servicios del nuevo punto de venta
+    await loadServicesForPointSale(Number(selectedPointSaleId.value))
+  }
+}
+
+// Watcher para cuando cambia el punto de venta (ADMIN)
+watch(() => selectedPointSaleId.value, async (newPointSaleId, oldPointSaleId) => {
+  // Solo para ADMIN y si realmente cambió
+  if (userRole.value === 'ADMIN' && newPointSaleId && newPointSaleId !== oldPointSaleId) {
+    console.log('🔄 Watcher: Punto de venta cambiado de', oldPointSaleId, 'a', newPointSaleId)
+    
+    // Limpiar servicios y items actuales
+    services.value = []
+    serviceItems.value.forEach(item => {
+      item.serviceId = 0
+      item.unitPrice = 0
+      item.subtotal = 0
+      item.subtotalWithDiscount = 0
+    })
+    
+    // Cargar servicios del nuevo punto de venta
+    await loadServicesForPointSale(Number(newPointSaleId))
+  }
+})
+
 const onServiceChange = (index: number) => {
   const service = services.value.find(s => s.id === serviceItems.value[index].serviceId)
   if (service) {
+    // Para ADMIN: validar que el servicio pertenezca al punto de venta seleccionado
+    if (userRole.value === 'ADMIN' && selectedPointSaleId.value) {
+      const pointsaleId = Number(selectedPointSaleId.value)
+      
+      // Verificar que el servicio tenga el pointsaleId correcto
+      if (service.pointsaleId && service.pointsaleId !== pointsaleId) {
+        const pointsaleName = pointsales.value.find(ps => ps.id === pointsaleId)?.name || 'seleccionado'
+        alert(`⚠️ El servicio seleccionado no está disponible en el punto de venta "${pointsaleName}". Por favor, seleccione otro servicio.`)
+        serviceItems.value[index].serviceId = 0
+        serviceItems.value[index].unitPrice = 0
+        calculateSubtotal(index)
+        return
+      }
+    }
+    
     serviceItems.value[index].unitPrice = Number(service.basePrice)
     calculateSubtotal(index)
   }
@@ -1035,15 +1375,29 @@ onMounted(async () => {
       if (hasExistingOrder && pointsales.value.length > 0) {
         selectedPointSaleId.value = existingOrderData.value.pointsale.id
         console.log('🏪 Punto de venta pre-seleccionado (ADMIN):', selectedPointSaleId.value)
+        // Cargar servicios del punto de venta
+        await loadServicesForPointSale(Number(selectedPointSaleId.value))
       } else if (savedFormState && savedFormState.selectedPointSaleId) {
         // Restaurar punto de venta seleccionado
         selectedPointSaleId.value = savedFormState.selectedPointSaleId
         console.log('🏪 Restaurando punto de venta seleccionado (ADMIN):', selectedPointSaleId.value)
-      }
-      
-      // Cargar categorías y servicios del negocio
-      if (pointsales.value.length > 0 && pointsales.value[0].businesId) {
-        await loadCategoriesAndServices(pointsales.value[0].businesId)
+        // Cargar servicios del punto de venta restaurado
+        await loadServicesForPointSale(Number(selectedPointSaleId.value))
+      } else if (selectedPointSaleId.value) {
+        // Si ya hay un punto de venta seleccionado (por ejemplo, si tiene solo uno), cargar servicios
+        await loadServicesForPointSale(Number(selectedPointSaleId.value))
+      } else if (preselectedCategory) {
+        // Si viene con categoría preseleccionada, seleccionar el primer punto de venta y cargar servicios
+        if (pointsales.value.length === 1) {
+          selectedPointSaleId.value = pointsales.value[0].id
+          console.log('🏪 Punto de venta auto-seleccionado (ADMIN con categoría preseleccionada, 1 punto de venta):', selectedPointSaleId.value)
+          await loadServicesForPointSale(Number(selectedPointSaleId.value))
+        } else if (pointsales.value.length > 1) {
+          // Si tiene múltiples puntos de venta, seleccionar el primero automáticamente cuando viene con categoría preseleccionada
+          selectedPointSaleId.value = pointsales.value[0].id
+          console.log('🏪 Punto de venta auto-seleccionado (ADMIN con categoría preseleccionada, múltiples puntos de venta):', selectedPointSaleId.value)
+          await loadServicesForPointSale(Number(selectedPointSaleId.value))
+        }
       }
     } else if (userRole.value === 'COLABORADOR') {
       await loadAssignedPointSale()
@@ -1057,15 +1411,36 @@ onMounted(async () => {
     }
     
     // Si viene con categoría preseleccionada, pre-seleccionarla en el primer item
-    if (preselectedCategory && categories.value.length > 0) {
+    if (preselectedCategory) {
+      // Para ADMIN: asegurarse de que las categorías estén cargadas
+      if (userRole.value === 'ADMIN' && categories.value.length === 0 && selectedBusinessId.value) {
+        console.log('🔄 Cargando categorías para ADMIN con categoría preseleccionada...')
+        await loadCategoriesForBusiness(Number(selectedBusinessId.value))
+      }
+      
+      // Verificar que las categorías estén cargadas
+      if (categories.value.length === 0) {
+        console.warn('⚠️ No se pudieron cargar las categorías')
+        return
+      }
+      
       const category = categories.value.find(c => c.categoryType === preselectedCategory)
       if (category && serviceItems.value.length > 0) {
+        // Para ADMIN: asegurarse de que los servicios estén cargados
+        if (userRole.value === 'ADMIN' && selectedPointSaleId.value && services.value.length === 0) {
+          console.log('🔄 Cargando servicios del punto de venta antes de verificar categoría...')
+          await loadServicesForPointSale(Number(selectedPointSaleId.value))
+        }
+        
         // Verificar primero si la categoría tiene servicios disponibles
         const availableServices = services.value.filter(s => s.servicecategoryId === category.id)
         
         if (availableServices.length === 0) {
           console.warn('⚠️ La categoría preseleccionada no tiene servicios disponibles')
-          alert(`⚠️ Servicio no disponible\n\nNo hay tipos de servicio configurados para "${category.name}". Por favor, seleccione otra categoría.`)
+          const pointsaleName = userRole.value === 'ADMIN' && selectedPointSaleId.value 
+            ? ` en el punto de venta "${pointsales.value.find(ps => ps.id === Number(selectedPointSaleId.value))?.name || ''}"`
+            : ''
+          alert(`⚠️ Servicio no disponible\n\nNo hay tipos de servicio configurados para "${category.name}"${pointsaleName}. Por favor, seleccione otra categoría o punto de venta.`)
           router.push({ name: 'select-category' })
           return
         }
@@ -1075,6 +1450,9 @@ onMounted(async () => {
         
         // Disparar el evento de cambio de categoría para cargar los servicios correspondientes
         await onCategoryChange(0)
+      } else if (!category) {
+        console.warn('⚠️ Categoría preseleccionada no encontrada:', preselectedCategory)
+        console.log('📋 Categorías disponibles:', categories.value.map(c => c.categoryType))
       }
     } else if (savedFormState && savedFormState.categoryId && categories.value.length > 0) {
       // Restaurar categoría seleccionada desde el estado guardado

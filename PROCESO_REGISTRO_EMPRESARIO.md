@@ -177,3 +177,4 @@
 4. **El formulario es responsive** y se ve bien en mobile y desktop
 5. **Los errores se muestran en tiempo real** para mejor experiencia de usuario
 
+

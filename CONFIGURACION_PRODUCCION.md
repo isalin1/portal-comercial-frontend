@@ -120,3 +120,4 @@ lavanderia-frontend/
 3. Después de cambiar variables de entorno, SIEMPRE reconstruye el frontend
 4. Verifica que el backend esté accesible desde el navegador antes de desplegar
 
+

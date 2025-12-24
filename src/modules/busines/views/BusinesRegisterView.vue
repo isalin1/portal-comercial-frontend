@@ -104,7 +104,9 @@ const form = ref({
 
 // Función para volver atrás
 function goBack() {
-  router.go(-1)
+  // Navegar directamente a business-presentation (más confiable que router.go(-1))
+  // Si el usuario no tiene negocio, será redirigido según la lógica de la vista
+  router.push({ name: 'business-presentation' })
 }
 
 // Función para obtener el placeholder dinámico según el tipo de documento

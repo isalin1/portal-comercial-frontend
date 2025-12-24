@@ -10,8 +10,8 @@
       <h1 class="title">Nuestros Servicios</h1>
     </header>
 
-    <!-- Botón Crear Nueva Categoría -->
-    <div class="create-category-section">
+    <!-- Botón Crear Nueva Categoría (solo para ADMIN/COLABORADOR) -->
+    <div v-if="authStore.user?.role !== 'SUPERADMIN'" class="create-category-section">
       <button 
         class="create-category-btn" 
         :class="{ 'disabled': allCategoriesHaveServices }"
@@ -23,8 +23,112 @@
       </button>
     </div>
 
-    <!-- Categorías de Servicios (Dinámicas) -->
-    <div class="services-categories" v-if="hasAnyServices">
+    <!-- SUPERADMIN: Servicios agrupados por negocio y punto de venta -->
+    <div v-if="authStore.user?.role === 'SUPERADMIN' && hasAnyServices" class="services-by-business">
+      <div class="business-section" v-for="(businessData, businessId) in servicesByBusinessAndPointSale" :key="businessId">
+        <div class="business-header">
+          <h2 class="business-title">{{ businessData.business.comercialname || businessData.business.name }}</h2>
+          <p class="business-subtitle">{{ businessData.business.name }}</p>
+        </div>
+
+        <!-- Puntos de Venta del Negocio -->
+        <div class="pointsales-section">
+          <div class="pointsale-section" v-for="(pointsaleData, pointsaleId) in businessData.pointsales" :key="pointsaleId">
+            <div class="pointsale-header">
+              <h3 class="pointsale-title">{{ pointsaleData.pointsale.name }}</h3>
+              <p class="pointsale-address">{{ pointsaleData.pointsale.address }}</p>
+            </div>
+
+            <!-- Agrupar servicios del punto de venta por categoría -->
+            <div class="services-categories">
+              <div class="service-category" v-for="categoryType in getCategoriesForBusiness(pointsaleData.services)" :key="categoryType">
+                <div class="category-header">
+                  <h4 class="category-title">{{ getCategoryDisplayName(categoryType) }}</h4>
+                  <div class="unit-info">
+                    <span class="unit-label">Unidad medida:</span>
+                    <span class="unit-value">{{ getCategoryUnit(categoryType) }}</span>
+                  </div>
+                </div>
+
+                <div class="services-list">
+                  <div class="service-item" v-for="service in getServicesForCategory(pointsaleData.services, categoryType)" :key="`${service.id}-${pointsaleId}`">
+                    <span class="service-name">{{ service.servicecategory?.name || 'Sin nombre' }}</span>
+                    <span class="service-type">{{ getTypeDisplayName(service.type) }}</span>
+                    <span class="service-price">
+                      <span class="price-label">Precio:</span>
+                      <span class="price-value" :class="{ 'custom-price': service.personalizedPrice && service.personalizedPrice !== service.basePrice }">
+                        S/. {{ service.personalizedPrice || service.basePrice }}
+                      </span>
+                      <span v-if="service.personalizedPrice && service.personalizedPrice !== service.basePrice" class="base-price-hint">
+                        (Base: S/. {{ service.basePrice }})
+                      </span>
+                    </span>
+                    <div class="service-actions">
+                      <button class="edit-btn" @click="editService(service.id)" title="Editar">
+                        ✏️
+                      </button>
+                      <button class="toggle-btn" :class="{ active: service.isActive }" @click="toggleService(service.id)" title="Activar/Desactivar servicio">
+                        {{ service.isActive ? '🔘' : '⚪' }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ADMIN: Servicios agrupados por punto de venta -->
+    <div v-else-if="authStore.user?.role === 'ADMIN' && hasAnyServices" class="services-by-pointsale">
+      <div class="pointsale-section" v-for="(pointsaleData, pointsaleId) in servicesByPointSale" :key="pointsaleId">
+        <div class="pointsale-header">
+          <h2 class="pointsale-title">{{ pointsaleData.pointsale.name }}</h2>
+          <p class="pointsale-address">{{ pointsaleData.pointsale.address }}</p>
+        </div>
+
+        <!-- Agrupar servicios del punto de venta por categoría -->
+        <div class="services-categories">
+          <div class="service-category" v-for="categoryType in getCategoriesForBusiness(pointsaleData.services)" :key="categoryType">
+            <div class="category-header">
+              <h3 class="category-title">{{ getCategoryDisplayName(categoryType) }}</h3>
+              <div class="unit-info">
+                <span class="unit-label">Unidad medida:</span>
+                <span class="unit-value">{{ getCategoryUnit(categoryType) }}</span>
+              </div>
+            </div>
+
+            <div class="services-list">
+              <div class="service-item" v-for="service in getServicesForCategory(pointsaleData.services, categoryType)" :key="service.id">
+                <span class="service-name">{{ service.servicecategory?.name || 'Sin nombre' }}</span>
+                <span class="service-type">{{ getTypeDisplayName(service.type) }}</span>
+                <span class="service-price">
+                  <span class="price-label">Precio:</span>
+                  <span class="price-value" :class="{ 'custom-price': service.personalizedPrice && service.personalizedPrice !== service.basePrice }">
+                    S/. {{ service.personalizedPrice || service.basePrice }}
+                  </span>
+                  <span v-if="service.personalizedPrice && service.personalizedPrice !== service.basePrice" class="base-price-hint">
+                    (Base: S/. {{ service.basePrice }})
+                  </span>
+                </span>
+                <div class="service-actions">
+                  <button class="edit-btn" @click="editService(service.id)" title="Editar">
+                    ✏️
+                  </button>
+                  <button class="toggle-btn" :class="{ active: service.isActive }" @click="toggleService(service.id)" title="Activar/Desactivar servicio">
+                    {{ service.isActive ? '🔘' : '⚪' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COLABORADOR: Categorías de Servicios (Dinámicas) -->
+    <div v-else-if="hasAnyServices" class="services-categories">
 
       <!-- Loop dinámico por cada categoría que tiene servicios -->
       <div class="service-category" v-for="categoryType in categoriesWithServices" :key="categoryType">
@@ -84,15 +188,18 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
-import { getServiceCategories, getListServices, deleteListService, updateListService, lavanderiaApi, getServiceEnums } from '@/api/lavanderiaApi'
+import { useAuthStore } from '@/modules/auth/stores/auth.store'
+import { getServiceCategories, getListServices, deleteListService, updateListService, lavanderiaApi, getServiceEnums, getAllPointSales } from '@/api/lavanderiaApi'
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 // Datos reales desde la API
 const serviceCategories = ref<any[]>([])
 const listServices = ref<any[]>([])
 const loading = ref(false)
 const businesId = ref<number | null>(null)
+const allPointSales = ref<any[]>([]) // Para ADMIN: todos los puntos de venta del negocio
 
 // Enums cargados desde el backend
 const allCategoriesFromEnum = ref<string[]>([])
@@ -193,47 +300,69 @@ async function loadData() {
     // Cargar enums primero
     await loadEnums()
     
-    if (!businesId.value) {
-      await getUserBusinessId()
-    }
+    const isSuperAdmin = authStore.user?.role === 'SUPERADMIN'
     
-    if (!businesId.value) {
-      console.error('❌ No se pudo obtener el businesId')
-      loading.value = false
-      return
+    if (isSuperAdmin) {
+      // SUPERADMIN: cargar todos los servicios de todos los negocios
+      console.log('🔑 SUPERADMIN - Cargando todos los servicios')
+      const services = await getListServices(null)
+      listServices.value = services
+      serviceCategories.value = []
+      
+      console.log('✅ Datos cargados exitosamente (SUPERADMIN):')
+      console.log('🛠️ Servicios:', services)
+      console.log('📊 Total de servicios:', services.length)
+    } else {
+      // ADMIN/COLABORADOR: cargar servicios de su negocio
+      if (!businesId.value) {
+        await getUserBusinessId()
+      }
+      
+      if (!businesId.value) {
+        console.error('❌ No se pudo obtener el businesId')
+        loading.value = false
+        return
+      }
+
+      console.log('🔄 Cargando datos para businesId:', businesId.value)
+
+      // Cargar categorías, servicios y puntos de venta
+      const [categories, services, pointSales] = await Promise.all([
+        getServiceCategories(businesId.value),
+        getListServices(businesId.value),
+        getAllPointSales()
+      ])
+
+      serviceCategories.value = categories
+      listServices.value = services
+      
+      // Filtrar puntos de venta del negocio del ADMIN
+      if (authStore.user?.role === 'ADMIN') {
+        allPointSales.value = pointSales.filter((ps: any) => ps.businesId === businesId.value)
+        console.log('📍 Puntos de venta del negocio:', allPointSales.value)
+      }
+
+      console.log('✅ Datos cargados exitosamente:')
+      console.log('📋 Categorías:', categories)
+      console.log('🛠️ Servicios:', services)
+      console.log('📊 Total de servicios:', services.length)
+
+      // Verificar cada servicio
+      services.forEach((service: any, index: number) => {
+        console.log(`🔍 Servicio ${index + 1} - Estructura completa:`, service)
+        console.log(`🔍 Servicio ${index + 1} - Tipo exacto:`, {
+          type: service.type,
+          typeType: typeof service.type,
+          typeUpperCase: service.type?.toUpperCase(),
+          typeLowerCase: service.type?.toLowerCase()
+        })
+        console.log(`🔍 Servicio ${index + 1} - Categoría:`, {
+          categoryId: service.servicecategory?.id,
+          categoryType: service.servicecategory?.categoryType,
+          categoryName: service.servicecategory?.name
+        })
+      })
     }
-
-    console.log('🔄 Cargando datos para businesId:', businesId.value)
-
-    // Cargar categorías y servicios
-    const [categories, services] = await Promise.all([
-      getServiceCategories(businesId.value),
-      getListServices(businesId.value)
-    ])
-
-    serviceCategories.value = categories
-    listServices.value = services
-
-    console.log('✅ Datos cargados exitosamente:')
-    console.log('📋 Categorías:', categories)
-    console.log('🛠️ Servicios:', services)
-    console.log('📊 Total de servicios:', services.length)
-
-    // Verificar cada servicio
-    services.forEach((service: any, index: number) => {
-      console.log(`🔍 Servicio ${index + 1} - Estructura completa:`, service)
-      console.log(`🔍 Servicio ${index + 1} - Tipo exacto:`, {
-        type: service.type,
-        typeType: typeof service.type,
-        typeUpperCase: service.type?.toUpperCase(),
-        typeLowerCase: service.type?.toLowerCase()
-      })
-      console.log(`🔍 Servicio ${index + 1} - Categoría:`, {
-        categoryId: service.servicecategory?.id,
-        categoryType: service.servicecategory?.categoryType,
-        categoryName: service.servicecategory?.name
-      })
-    })
 
   } catch (error: any) {
     console.error('❌ Error cargando datos:', error)
@@ -244,6 +373,201 @@ async function loadData() {
     loading.value = false
   }
 }
+
+// Computed: Agrupar servicios por negocio y punto de venta (para SUPERADMIN)
+const servicesByBusinessAndPointSale = computed(() => {
+  if (authStore.user?.role !== 'SUPERADMIN') {
+    return {}
+  }
+  
+  const grouped: Record<number, { 
+    business: any, 
+    pointsales: Record<number, {
+      pointsale: any,
+      services: any[]
+    }>
+  }> = {}
+  
+  // Primero, obtener todos los puntos de venta de cada negocio
+  const businessPointsales: Record<number, any[]> = {}
+  
+  listServices.value.forEach((service: any) => {
+    const business = service.servicecategory?.busines
+    if (business) {
+      const businessId = business.id
+      if (!businessPointsales[businessId]) {
+        businessPointsales[businessId] = []
+      }
+      
+      // Recopilar todos los puntos de venta únicos del negocio
+      if (service.pointsaleServices && service.pointsaleServices.length > 0) {
+        service.pointsaleServices.forEach((ps: any) => {
+          if (!businessPointsales[businessId].find((p: any) => p.id === ps.pointsale.id)) {
+            businessPointsales[businessId].push(ps.pointsale)
+          }
+        })
+      }
+      
+      // También incluir puntos de venta del negocio desde business.pointsales si están disponibles
+      if (business.pointsales && business.pointsales.length > 0) {
+        business.pointsales.forEach((ps: any) => {
+          if (!businessPointsales[businessId].find((p: any) => p.id === ps.id)) {
+            businessPointsales[businessId].push(ps)
+          }
+        })
+      }
+    }
+  })
+  
+  // Ahora agrupar servicios por negocio y punto de venta
+  listServices.value.forEach((service: any) => {
+    const business = service.servicecategory?.busines
+    if (business) {
+      const businessId = business.id
+      if (!grouped[businessId]) {
+        grouped[businessId] = {
+          business: business,
+          pointsales: {}
+        }
+        
+        // Inicializar puntos de venta del negocio
+        if (businessPointsales[businessId]) {
+          businessPointsales[businessId].forEach((ps: any) => {
+            grouped[businessId].pointsales[ps.id] = {
+              pointsale: ps,
+              services: []
+            }
+          })
+        }
+      }
+      
+      // Agrupar por punto de venta usando pointsaleServices
+      if (service.pointsaleServices && service.pointsaleServices.length > 0) {
+        service.pointsaleServices.forEach((ps: any) => {
+          const pointsaleId = ps.pointsale.id
+          if (!grouped[businessId].pointsales[pointsaleId]) {
+            grouped[businessId].pointsales[pointsaleId] = {
+              pointsale: ps.pointsale,
+              services: []
+            }
+          }
+          // Agregar servicio con precio personalizado del punto de venta
+          grouped[businessId].pointsales[pointsaleId].services.push({
+            ...service,
+            personalizedPrice: ps.price,
+            isActiveInPointSale: ps.isActive,
+            pointsaleServiceId: ps.id
+          })
+        })
+      } else {
+        // Si el servicio no tiene personalización, agregarlo a todos los puntos de venta del negocio con precio base
+        Object.keys(grouped[businessId].pointsales).forEach((pointsaleIdStr: string) => {
+          const pointsaleId = parseInt(pointsaleIdStr)
+          grouped[businessId].pointsales[pointsaleId].services.push({
+            ...service,
+            personalizedPrice: null,
+            isActiveInPointSale: service.isActive,
+            pointsaleServiceId: null
+          })
+        })
+      }
+    }
+  })
+  
+  console.log('📊 Servicios agrupados por negocio y punto de venta:', grouped)
+  return grouped
+})
+
+// Computed: Agrupar servicios por punto de venta (para ADMIN)
+const servicesByPointSale = computed(() => {
+  if (authStore.user?.role !== 'ADMIN') {
+    return {}
+  }
+  
+  const grouped: Record<number, {
+    pointsale: any,
+    services: any[]
+  }> = {}
+  
+  // Inicializar todos los puntos de venta del negocio
+  allPointSales.value.forEach((ps: any) => {
+    grouped[ps.id] = {
+      pointsale: ps,
+      services: []
+    }
+  })
+  
+  // Agrupar servicios por punto de venta
+  listServices.value.forEach((service: any) => {
+    // Obtener los puntos de venta donde este servicio está personalizado
+    const personalizedPointSaleIds = new Set<number>()
+    
+    if (service.pointsaleServices && service.pointsaleServices.length > 0) {
+      service.pointsaleServices.forEach((ps: any) => {
+        const pointsaleId = ps.pointsale.id
+        personalizedPointSaleIds.add(pointsaleId)
+        
+        // Agregar servicio personalizado solo si el punto de venta está en la lista del negocio
+        if (grouped[pointsaleId]) {
+          // Verificar que no esté duplicado
+          const alreadyExists = grouped[pointsaleId].services.some((s: any) => 
+            s.id === service.id && s.pointsaleServiceId === ps.id
+          )
+          
+          if (!alreadyExists) {
+            grouped[pointsaleId].services.push({
+              ...service,
+              personalizedPrice: ps.price,
+              isActiveInPointSale: ps.isActive,
+              pointsaleServiceId: ps.id
+            })
+          }
+        }
+      })
+    }
+    
+    // Para servicios sin personalización, agregarlos solo a los puntos de venta que no tienen personalización
+    // O si no hay ningún punto de venta con personalización, agregarlo a todos
+    Object.keys(grouped).forEach((pointsaleIdStr: string) => {
+      const pointsaleId = parseInt(pointsaleIdStr)
+      
+      // Solo agregar si no tiene personalización para este punto de venta
+      if (!personalizedPointSaleIds.has(pointsaleId)) {
+        // Verificar que no esté duplicado
+        const alreadyExists = grouped[pointsaleId].services.some((s: any) => 
+          s.id === service.id && s.pointsaleServiceId === null
+        )
+        
+        if (!alreadyExists) {
+          grouped[pointsaleId].services.push({
+            ...service,
+            personalizedPrice: null,
+            isActiveInPointSale: service.isActive,
+            pointsaleServiceId: null
+          })
+        }
+      }
+    })
+  })
+  
+  console.log('📊 Servicios agrupados por punto de venta:', grouped)
+  console.log('📊 Resumen por punto de venta:')
+  Object.keys(grouped).forEach((pointsaleIdStr: string) => {
+    const pointsaleId = parseInt(pointsaleIdStr)
+    const pointsaleData = grouped[pointsaleId]
+    console.log(`  - Punto de venta ${pointsaleId} (${pointsaleData.pointsale.name}): ${pointsaleData.services.length} servicios`)
+    
+    // Agrupar por categoría para verificar duplicados
+    const servicesByCategory: Record<string, number> = {}
+    pointsaleData.services.forEach((s: any) => {
+      const catType = s.servicecategory?.categoryType || 'SIN_CATEGORIA'
+      servicesByCategory[catType] = (servicesByCategory[catType] || 0) + 1
+    })
+    console.log(`    Categorías:`, servicesByCategory)
+  })
+  
+  return grouped
+})
 
 // Computed: Agrupar servicios por categoría dinámicamente
 const servicesByCategory = computed(() => {
@@ -486,6 +810,25 @@ function getTypeDisplayName(type: string): string {
   return typeNames[type] || type
 }
 
+// Función auxiliar para obtener las categorías únicas de los servicios de un negocio
+function getCategoriesForBusiness(services: any[]): string[] {
+  const categories = new Set<string>()
+  services.forEach((service: any) => {
+    const categoryType = service.servicecategory?.categoryType
+    if (categoryType) {
+      categories.add(categoryType)
+    }
+  })
+  return Array.from(categories)
+}
+
+// Función auxiliar para obtener los servicios de una categoría específica
+function getServicesForCategory(services: any[], categoryType: string): any[] {
+  return services.filter((service: any) => 
+    service.servicecategory?.categoryType === categoryType
+  )
+}
+
 onMounted(() => {
   console.log('ListServicePresentationView montado')
   loadData()
@@ -663,6 +1006,7 @@ onActivated(() => {
   box-sizing: border-box;
   flex-wrap: wrap;
   gap: 8px;
+  overflow: hidden;
 }
 
 .service-name {
@@ -692,16 +1036,52 @@ onActivated(() => {
   color: #666;
   font-weight: 600;
   margin: 0 8px;
-  min-width: 70px;
+  min-width: 120px;
+  max-width: 150px;
   text-align: right;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.price-label {
+  font-size: 11px;
+  color: #999;
+  font-weight: 400;
+}
+
+.price-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.price-value.custom-price {
+  color: #ff6b35;
+  font-weight: 700;
+}
+
+.base-price-hint {
+  font-size: 10px;
+  color: #999;
+  font-weight: 400;
+  font-style: italic;
 }
 
 .service-actions {
-  display: flex;
+  display: flex !important;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+  flex: 0 0 auto;
+  min-width: 80px;
+  max-width: 100px;
+  justify-content: flex-end;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: relative;
 }
 
 .edit-btn {
@@ -809,6 +1189,24 @@ onActivated(() => {
   .service-item {
     padding: 15px 20px;
     flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  .service-actions {
+    min-width: 100px !important;
+    gap: 12px;
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  .edit-btn,
+  .toggle-btn {
+    font-size: 20px;
+    padding: 8px;
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
   }
 }
 
@@ -827,6 +1225,7 @@ onActivated(() => {
   .service-category {
     padding: 1.5rem;
     min-width: 0; /* Permite que el grid item se ajuste */
+    overflow: visible;
   }
 
   .category-title {
@@ -835,21 +1234,75 @@ onActivated(() => {
 
   .service-item {
     padding: 15px 20px;
+    flex-wrap: nowrap;
+    overflow: visible;
+    display: grid !important;
+    grid-template-columns: 2fr 1fr 1.5fr auto;
+    gap: 12px;
+    align-items: center;
   }
 
   .service-name {
     font-size: 15px;
-    min-width: 120px;
+    min-width: 0;
+    flex: none !important;
+    grid-column: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
   }
 
   .service-type {
     font-size: 13px;
-    min-width: 80px;
+    min-width: 0;
+    flex: none !important;
+    grid-column: 2;
+    margin: 0 !important;
+    justify-self: center;
+    max-width: 100%;
   }
 
   .service-price {
     font-size: 16px;
-    min-width: 90px;
+    min-width: 0;
+    flex: none !important;
+    grid-column: 3;
+    margin: 0 !important;
+    text-align: right;
+    justify-self: end;
+    max-width: 100%;
+  }
+
+  .service-actions {
+    min-width: 100px !important;
+    max-width: 150px !important;
+    gap: 12px;
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: flex !important;
+    flex: none !important;
+    grid-column: 4;
+    position: relative;
+    justify-content: flex-end;
+    justify-self: start;
+    width: auto;
+    margin: 0 !important;
+    z-index: 10;
+  }
+
+  .edit-btn,
+  .toggle-btn {
+    font-size: 22px;
+    padding: 10px;
+    min-width: 40px;
+    min-height: 40px;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    visibility: visible !important;
+    opacity: 1 !important;
+    flex-shrink: 0;
   }
 }
 
@@ -878,6 +1331,111 @@ onActivated(() => {
   .services-categories {
     grid-template-columns: repeat(4, 1fr);
     gap: 2rem;
+  }
+}
+
+/* Estilos para SUPERADMIN: Servicios agrupados por negocio */
+.services-by-business {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.business-section {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.business-header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #ff6b35;
+}
+
+.business-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #ff6b35;
+}
+
+.business-subtitle {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #666;
+  font-style: italic;
+}
+
+@media (min-width: 1024px) {
+  .business-section {
+    padding: 2rem;
+  }
+
+  .business-title {
+    font-size: 1.75rem;
+  }
+}
+
+/* Estilos para puntos de venta */
+.pointsales-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.pointsale-section {
+  background: #f8f9fa;
+  border-radius: 10px;
+  padding: 1.5rem;
+  border: 1px solid #e9ecef;
+}
+
+.pointsale-header {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.pointsale-title {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: #333;
+}
+
+.pointsale-address {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+/* Estilos para servicios agrupados por punto de venta (ADMIN) */
+.services-by-pointsale {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (min-width: 1024px) {
+  .pointsale-section {
+    padding: 2rem;
+  }
+
+  .pointsale-title {
+    font-size: 1.5rem;
+  }
+
+  .service-price {
+    min-width: 150px;
   }
 }
 </style>

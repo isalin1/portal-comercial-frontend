@@ -231,11 +231,20 @@ const availableCategories = computed(() => {
 })
 
 // Función para manejar el cambio de categoría
-function onCategoryChange() {
+async function onCategoryChange() {
   // Asignar la unidad de medida según la categoría seleccionada
   if (form.categoryType && categoryToUnitMap[form.categoryType]) {
     form.unitMeasure = categoryToUnitMap[form.categoryType]
     console.log('🔄 Unidad asignada:', form.unitMeasure, 'para categoría:', form.categoryType)
+  }
+  
+  // Limpiar el tipo seleccionado cuando cambia la categoría
+  form.typeName = ''
+  
+  // Cargar los tipos disponibles para la nueva categoría
+  if (form.categoryType && businesId.value) {
+    console.log('🔄 Cargando tipos para categoría:', form.categoryType)
+    await loadUsedServiceTypes(businesId.value, form.categoryType)
   }
 }
 
@@ -266,32 +275,102 @@ async function loadUsedServiceTypes(businesId: number, categoryType: string) {
   try {
     console.log('🔍 Cargando tipos usados para businesId:', businesId, 'categoryType:', categoryType)
     const existingServices = await getListServices(businesId)
-    console.log('📋 Servicios existentes:', existingServices)
+    console.log('📋 Servicios existentes (total):', existingServices.length)
+    console.log('📋 Todos los servicios:', existingServices)
     
-    // Obtener los tipos ya usados en la misma categoría
-    const used = existingServices
-      .filter((service: any) => 
-        service.isActive && 
-        service.servicecategory && 
+    // Obtener los tipos ya usados en la misma categoría (incluyendo activos e inactivos)
+    // Esto evita que se puedan crear servicios duplicados aunque estén inactivos
+    const servicesInCategory = existingServices.filter((service: any) => {
+      const matches = service.servicecategory && 
         service.servicecategory.categoryType === categoryType
-      )
-      .map((service: any) => service.type)
+      
+      if (matches) {
+        console.log(`✅ Servicio encontrado en categoría ${categoryType}:`, {
+          id: service.id,
+          type: service.type,
+          typeNormalized: String(service.type).toUpperCase(),
+          isActive: service.isActive,
+          categoryType: service.servicecategory?.categoryType
+        })
+      }
+      
+      return matches
+    })
     
-    usedTypes.value = used
+    console.log(`📊 Servicios en categoría ${categoryType}:`, servicesInCategory.length)
+    
+    // Primero, obtener los tipos normalizados para comparación
+    const usedNormalized = servicesInCategory
+      .map((service: any) => {
+        // Normalizar el tipo a mayúsculas y trim para comparación
+        const normalizedType = String(service.type || '').trim().toUpperCase()
+        console.log(`  - Tipo: "${service.type}" -> Normalizado: "${normalizedType}"`)
+        return normalizedType
+      })
+      .filter((type, index, self) => {
+        // Eliminar duplicados y valores vacíos
+        return type && self.indexOf(type) === index
+      })
+    
+    // Guardar los tipos usados en formato normalizado para comparación
+    const used = usedNormalized
+    
+    // Para mostrar en el template, convertir a formato original si es posible
+    usedTypes.value = usedNormalized.map(normalizedType => {
+      // Intentar encontrar el tipo original en el mapeo
+      const originalType = categoryToTypesMap[categoryType]?.find(ot => 
+        String(ot).trim().toUpperCase() === normalizedType
+      )
+      return originalType || normalizedType
+    })
     
     // Obtener los tipos permitidos para esta categoría específica
-    const allowedTypesForCategory = categoryToTypesMap[categoryType] || []
+    const allowedTypesForCategory = (categoryToTypesMap[categoryType] || []).map(t => String(t).trim().toUpperCase())
     console.log('📋 Tipos permitidos para categoría', categoryType, ':', allowedTypesForCategory)
+    console.log('📋 Tipos permitidos (originales):', categoryToTypesMap[categoryType])
     
     // Filtrar los tipos disponibles (permitidos y no usados)
-    availableTypes.value = allowedTypesForCategory.filter(type => !used.includes(type))
+    // Comparar en mayúsculas para evitar problemas de case-sensitivity
+    const availableTypesNormalized = allowedTypesForCategory.filter(type => {
+      const isUsed = used.includes(type)
+      console.log(`  - Tipo "${type}": ${isUsed ? 'USADO' : 'DISPONIBLE'}`)
+      return !isUsed
+    })
+    
+    availableTypes.value = availableTypesNormalized.map(t => {
+      // Devolver el tipo en el formato original del mapeo
+      const originalType = categoryToTypesMap[categoryType]?.find(ot => String(ot).trim().toUpperCase() === t)
+      const result = originalType || t
+      console.log(`  - Mapeando "${t}" -> "${result}"`)
+      return result
+    })
     
     console.log('✅ Tipos usados:', used)
-    console.log('✅ Tipos disponibles:', availableTypes.value)
+    console.log('✅ Tipos usados (array):', JSON.stringify(used))
+    console.log('✅ Tipos permitidos (normalizados):', JSON.stringify(allowedTypesForCategory))
+    console.log('✅ Tipos disponibles (normalizados):', JSON.stringify(availableTypesNormalized))
+    console.log('✅ Tipos disponibles (originales):', availableTypes.value)
     console.log('✅ Total tipos disponibles:', availableTypes.value.length)
+    
+    // Verificación adicional: comparar cada tipo permitido individualmente
+    console.log('🔍 Verificación detallada por tipo:')
+    categoryToTypesMap[categoryType]?.forEach(originalType => {
+      const normalized = String(originalType).trim().toUpperCase()
+      const isInUsed = used.includes(normalized)
+      const isInAvailable = availableTypes.value.includes(originalType)
+      console.log(`  - "${originalType}" (normalizado: "${normalized}"): usado=${isInUsed}, disponible=${isInAvailable}`)
+    })
+    
+    // Si no hay tipos disponibles, mostrar un mensaje de advertencia
+    if (availableTypes.value.length === 0) {
+      console.warn('⚠️ No hay tipos disponibles para la categoría', categoryType)
+      console.warn('⚠️ Todos los tipos permitidos están usados:', allowedTypesForCategory)
+      console.warn('⚠️ Tipos usados encontrados:', used)
+    }
     
   } catch (error) {
     console.error('❌ Error al cargar tipos de servicios:', error)
+    console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack available')
     // En caso de error, mostrar los tipos permitidos para la categoría
     availableTypes.value = categoryToTypesMap[categoryType] || []
     usedTypes.value = []
@@ -303,10 +382,17 @@ async function validateServiceType(serviceType: string, businesId: number, categ
   try {
     const existingServices = await getListServices(businesId)
     
+    // Normalizar el tipo a comparar
+    const normalizedServiceType = String(serviceType).toUpperCase()
+    
     // Verificar si ya existe un servicio con el mismo tipo en la misma categoría
+    // (incluyendo activos e inactivos para evitar duplicados)
     const typeExists = existingServices.some((service: any) => {
-      // Verificar que el servicio esté activo y tenga el mismo tipo
-      if (!service.isActive || service.type !== serviceType) {
+      // Normalizar el tipo del servicio existente
+      const normalizedExistingType = String(service.type).toUpperCase()
+      
+      // Verificar que tenga el mismo tipo (comparación case-insensitive)
+      if (normalizedExistingType !== normalizedServiceType) {
         return false
       }
       

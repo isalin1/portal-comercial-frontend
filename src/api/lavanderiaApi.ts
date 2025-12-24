@@ -292,8 +292,11 @@ export async function deleteServiceCategory(id: number) {
 }
 
 // ListService API calls
-export async function getListServices(businesId: number) {
-  const { data } = await lavanderiaApi.get(`/listservice?businesId=${businesId}`)
+export async function getListServices(businesId?: number | null) {
+  const url = businesId 
+    ? `/listservice?businesId=${businesId}`
+    : '/listservice'
+  const { data } = await lavanderiaApi.get(url)
   return data
 }
 

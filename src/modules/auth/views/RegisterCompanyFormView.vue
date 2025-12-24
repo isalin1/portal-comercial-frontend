@@ -136,7 +136,8 @@ const errors = ref({
 
 // Función para volver atrás
 function goBack() {
-  router.go(-1)
+  // Navegar directamente al dashboard (más confiable que router.go(-1))
+  router.push({ name: 'dashboard' })
 }
 
 // Función para obtener el placeholder dinámico según el tipo de documento

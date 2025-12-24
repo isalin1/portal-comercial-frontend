@@ -44,7 +44,7 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { lavanderiaApi } from '@/api/lavanderiaApi'
+import { lavanderiaApi, getPointSaleServices } from '@/api/lavanderiaApi'
 import { useAuthStore } from '@/modules/auth/stores/auth.store'
 
 const router = useRouter()
@@ -253,6 +253,10 @@ const loadCategories = async () => {
       if (adminBusiness) {
         businessId = adminBusiness.id
         console.log('🏢 ADMIN - BusinessId encontrado:', businessId)
+        
+        // Para ADMIN: cargar categorías agrupadas por punto de venta
+        await loadCategoriesByPointSale(adminBusiness)
+        return // Salir temprano para ADMIN
       } else {
         console.error('❌ ADMIN no tiene negocio asignado')
       }
@@ -319,6 +323,107 @@ const loadCategories = async () => {
     
   } catch (error: any) {
     console.error('❌ Error al cargar categorías:', error)
+    alert('Error al cargar las categorías de servicio')
+  } finally {
+    loading.value = false
+  }
+}
+
+// Función específica para ADMIN: cargar categorías agrupadas por punto de venta
+const loadCategoriesByPointSale = async (adminBusiness: any) => {
+  try {
+    console.log('🔄 Cargando categorías por punto de venta para ADMIN...')
+    
+    const pointsales = adminBusiness.pointsales || []
+    console.log('🏪 Puntos de venta del ADMIN:', pointsales)
+    
+    if (pointsales.length === 0) {
+      console.warn('⚠️ ADMIN no tiene puntos de venta')
+      return
+    }
+    
+    const businessId = adminBusiness.id
+    const unitMap: Record<string, string> = {
+      'KILOGRAM': 'Por Kilogramo (kg)',
+      'UNIT': 'Por Unidad',
+      'PAIR': 'Por Par',
+      'METER': 'Por Metro (mt)'
+    }
+    
+    // Set para evitar categorías duplicadas
+    const uniqueCategories = new Map<string, { value: string; label: string; unit: string; hasServices: boolean }>()
+    
+    // PRIMERO: Cargar servicios base del negocio (ListService)
+    console.log('🔄 Cargando servicios base del negocio...')
+    try {
+      const servicesResponse = await lavanderiaApi.get(`/listservice?businesId=${businessId}`)
+      const baseServices = servicesResponse.data || []
+      console.log('📦 Servicios base del negocio:', baseServices.length)
+      
+      // Extraer categorías de los servicios base
+      baseServices.forEach((service: any) => {
+        if (service.servicecategory && service.isActive) {
+          const categoryType = service.servicecategory.categoryType
+          const categoryName = service.servicecategory.name
+          const categoryUnit = service.servicecategory.unit
+          
+          // Solo agregar si no existe ya
+          if (!uniqueCategories.has(categoryType)) {
+            uniqueCategories.set(categoryType, {
+              value: categoryType,
+              label: categoryDisplayNames[categoryType] || categoryName,
+              unit: unitMap[categoryUnit] || categoryUnit,
+              hasServices: true
+            })
+          }
+        }
+      })
+    } catch (error: any) {
+      console.error('❌ Error cargando servicios base del negocio:', error)
+    }
+    
+    // SEGUNDO: Para cada punto de venta, cargar sus servicios personalizados y extraer categorías únicas
+    for (const pointsale of pointsales) {
+      try {
+        console.log(`🔄 Cargando servicios personalizados para punto de venta ${pointsale.id} (${pointsale.name})...`)
+        const pointSaleServices = await getPointSaleServices(pointsale.id)
+        console.log(`📦 Servicios personalizados del punto de venta ${pointsale.id}:`, pointSaleServices)
+        
+        // Extraer categorías únicas de los servicios personalizados de este punto de venta
+        pointSaleServices.forEach((ps: any) => {
+          if (ps.listservice && ps.listservice.servicecategory && ps.isActive) {
+            const categoryType = ps.listservice.servicecategory.categoryType
+            const categoryName = ps.listservice.servicecategory.name
+            const categoryUnit = ps.listservice.servicecategory.unit
+            
+            // Solo agregar si no existe ya
+            if (!uniqueCategories.has(categoryType)) {
+              uniqueCategories.set(categoryType, {
+                value: categoryType,
+                label: categoryDisplayNames[categoryType] || categoryName,
+                unit: unitMap[categoryUnit] || categoryUnit,
+                hasServices: true
+              })
+            }
+          }
+        })
+      } catch (error: any) {
+        console.error(`❌ Error cargando servicios para punto de venta ${pointsale.id}:`, error)
+        // Continuar con el siguiente punto de venta
+      }
+    }
+    
+    // Convertir el Map a array
+    categories.value = Array.from(uniqueCategories.values())
+    
+    // Ordenar por nombre de categoría
+    categories.value.sort((a, b) => a.label.localeCompare(b.label))
+    
+    console.log(`✅ Categorías únicas encontradas: ${categories.value.length}`)
+    console.log('✅ Categorías finales (ADMIN):', categories.value)
+    
+  } catch (error: any) {
+    console.error('❌ Error al cargar categorías por punto de venta:', error)
     alert('Error al cargar las categorías de servicio')
   } finally {
     loading.value = false
