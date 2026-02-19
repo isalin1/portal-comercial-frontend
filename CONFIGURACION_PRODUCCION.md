@@ -121,3 +121,4 @@ lavanderia-frontend/
 4. Verifica que el backend esté accesible desde el navegador antes de desplegar
 
 
+

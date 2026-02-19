@@ -178,3 +178,4 @@
 5. **Los errores se muestran en tiempo real** para mejor experiencia de usuario
 
 
+
