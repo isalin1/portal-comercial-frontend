@@ -4,7 +4,7 @@
     <p class="description">
       Las herramientas de gestión que<br />
       necesitas para brindar un<br />
-      excelente servicio a tus clientes
+      excelente servicio a tus clientes.
     </p>
     <img
       class="illustration"
