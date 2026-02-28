@@ -209,23 +209,24 @@ const unitDisplayNames: Record<string, string> = {
   'METER': 'Metro (mt)'
 }
 
-// Computed para obtener las categorías disponibles (que no están en uso)
+// Computed para obtener TODAS las categorías (nuevas y existentes) - permite agregar tipos a categorías ya creadas
 const availableCategories = computed(() => {
   const services = listServices.value
   
-  // Obtener categorías que ya tienen servicios
-  const categoriesInUse = services.map((service: any) => service.servicecategory?.categoryType)
+  // Obtener categorías que ya tienen servicios en el negocio
+  const categoriesInUse = [...new Set(
+    services.map((service: any) => service.servicecategory?.categoryType).filter(Boolean)
+  )]
   
-  // Filtrar categorías que no están en uso
-  const available = allCategoriesFromEnum.value
-    .filter(cat => !categoriesInUse.includes(cat))
-    .map(cat => ({
-      value: cat,
-      label: categoryDisplayNames[cat] || cat
-    }))
+  // Incluir TODAS las categorías: nuevas y existentes (para poder agregar tipos adicionales)
+  const available = allCategoriesFromEnum.value.map(cat => ({
+    value: cat,
+    label: categoriesInUse.includes(cat)
+      ? `${categoryDisplayNames[cat] || cat} (agregar tipo)`
+      : (categoryDisplayNames[cat] || cat)
+  }))
   
-  console.log('🔍 Categorías disponibles (no en uso):', available)
-  console.log('🔍 Categorías en uso:', categoriesInUse)
+  console.log('🔍 Categorías disponibles (todas):', available)
   
   return available
 })
@@ -622,18 +623,28 @@ async function handleSubmit() {
         return
       }
     } else {
-      // Crear la categoría de servicio solo si no existe
-      const categoryData = {
-        name: categoryDisplayNames[form.categoryType] || form.categoryType,
-        categoryType: form.categoryType,
-        unit: form.unitMeasure,
-        businesId: businesId.value
-      }
+      // Verificar si la categoría ya existe para este negocio (para agregar tipo adicional)
+      const categories = await getServiceCategories(businesId.value!)
+      const existingCategory = categories.find((cat: any) => cat.categoryType === form.categoryType)
 
-      console.log('📝 Creando nueva categoría:', categoryData)
-      const createdCategory = await createServiceCategory(categoryData)
-      console.log('✅ Categoría creada:', createdCategory)
-      servicecategoryId = createdCategory.id
+      if (existingCategory) {
+        // Usar categoría existente para agregar un nuevo tipo
+        servicecategoryId = existingCategory.id
+        console.log('✅ Usando categoría existente para agregar tipo, ID:', servicecategoryId)
+      } else {
+        // Crear la categoría de servicio solo si no existe
+        const categoryData = {
+          name: categoryDisplayNames[form.categoryType] || form.categoryType,
+          categoryType: form.categoryType,
+          unit: form.unitMeasure,
+          businesId: businesId.value
+        }
+
+        console.log('📝 Creando nueva categoría:', categoryData)
+        const createdCategory = await createServiceCategory(categoryData)
+        console.log('✅ Categoría creada:', createdCategory)
+        servicecategoryId = createdCategory.id
+      }
     }
 
     // Crear el servicio

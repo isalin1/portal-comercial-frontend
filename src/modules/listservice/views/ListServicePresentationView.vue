@@ -98,6 +98,15 @@
                 <span class="unit-value">{{ getCategoryUnit(categoryType) }}</span>
               </div>
             </div>
+            <button
+              class="add-new-btn"
+              :class="{ 'disabled': areAllTypesUsedForCategory(categoryType) }"
+              :disabled="areAllTypesUsedForCategory(categoryType)"
+              @click="addNewService(categoryType)"
+              :title="areAllTypesUsedForCategory(categoryType) ? 'Todos los tipos de esta categoría ya han sido creados' : 'Agregar un nuevo tipo de servicio'"
+            >
+              {{ areAllTypesUsedForCategory(categoryType) ? 'Todos los tipos creados' : 'Agregar nuevo' }}
+            </button>
 
             <div class="services-list">
               <div class="service-item" v-for="service in getServicesForCategory(pointsaleData.services, categoryType)" :key="service.id">
