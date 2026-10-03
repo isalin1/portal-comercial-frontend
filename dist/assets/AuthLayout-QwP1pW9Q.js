@@ -1,1 +1,0 @@
-import{d as t,c as o,j as a,S as s,h as n,_ as c}from"./index-LD4cUYbR.js";const _={class:"auth-container"},r=t({__name:"AuthLayout",setup(p){return(u,d)=>{const e=s("router-view");return n(),o("div",_,[a(e)])}}}),m=c(r,[["__scopeId","data-v-3753b5df"]]);export{m as default};

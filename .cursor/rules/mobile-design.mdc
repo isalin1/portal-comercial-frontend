@@ -1,0 +1,19 @@
+---
+description: Marco móvil y tokens visuales del portal para cada pantalla nueva
+globs: src/**/*.{vue,css}
+alwaysApply: true
+---
+
+# Diseño móvil del portal
+
+El front se muestra primero en móvil. Cada pantalla nueva se adapta a este marco, una por una, reutilizando los tokens de `src/assets/main.css`.
+
+- Ancho estándar: `--phone-width: 390px`. En un teléfono más angosto, `100%`. No usar un lienzo de 980px.
+- Alto: `100dvh`. El contenido se desplaza dentro de `.body`. La barra inferior queda fuera del desplazamiento y no tapa el contenido.
+- Padding horizontal: `--space-page` (16px). Nada debe desbordar el marco ni cortarse en los bordes.
+- Colores: `--color-brand` #e21221, `--color-brand-dark`, `--color-brand-soft`, `--color-ink`, `--color-muted`, `--color-line`, `--color-surface`, `--color-canvas`.
+- Radios: `--radius-card` 16px, `--radius-control` 12px, `--radius-mark` 8px.
+- Sombra de tarjeta: `--shadow-soft`. Tipografía: `--font-ui` (Montserrat).
+- Botón principal: fondo `--color-brand`, texto blanco, radio `--radius-control`, alto 48px.
+- El inicio de sesión usa el mismo marco. Cliente y Empresario cambian el texto y el registro. No agregar recuperar contraseña ni recordar sesión mientras no existan.
+- Los textos, categorías y negocios salen de la API. No copiar ejemplos inventados de un export de Stitch.
