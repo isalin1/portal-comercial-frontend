@@ -12,11 +12,18 @@ const route = useRoute()
 const email = ref('')
 const password = ref('')
 const error = ref('')
+const note = ref('')
 const loading = ref(false)
 
 const tipo = computed(() => (route.query.tipo === 'empresario' ? 'empresario' : route.query.tipo === 'cliente' ? 'cliente' : ''))
 const role = computed(() => (tipo.value === 'empresario' ? 'empresario' : 'cliente'))
 const showPassword = ref(false)
+
+const storedNote = sessionStorage.getItem('portal_login_note')
+if (storedNote) {
+  note.value = storedNote
+  sessionStorage.removeItem('portal_login_note')
+}
 
 const registerTo = computed(() =>
   role.value === 'empresario' ? { name: 'empresario-benefits' } : { name: 'client-benefits' },
@@ -65,7 +72,7 @@ async function submit() {
 </script>
 
 <template>
-  <ScreenFrame storefront back>
+  <ScreenFrame storefront back fluid>
     <div class="role-switch" role="tablist">
       <button :class="{ on: role === 'cliente' }" type="button" role="tab" :aria-selected="role === 'cliente'" @click="choose('cliente')">
         Cliente
@@ -81,6 +88,7 @@ async function submit() {
       <p v-else>Accede para publicar tu negocio y atender a tus clientes</p>
     </div>
     <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="note" class="note">{{ note }}</p>
     <form class="login-form" @submit.prevent="submit">
       <label class="login-field">
         <span>Correo electrónico</span>
@@ -94,6 +102,9 @@ async function submit() {
         </span>
       </label>
       <button class="btn enter" type="submit" :disabled="loading">{{ loading ? 'Ingresando…' : 'Ingresar' }}</button>
+      <p class="forgot">
+        <router-link :to="{ name: 'forgot-password' }">¿Olvidaste tu contraseña?</router-link>
+      </p>
     </form>
     <section class="register-card">
       <p>¿No tienes una cuenta aún?</p>
@@ -167,6 +178,19 @@ async function submit() {
   line-height: 20px;
 }
 
+.note {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  background: #fff5f5;
+  border: 1px solid #fecaca;
+  color: var(--color-brand);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .login-form {
   display: flex;
   flex-direction: column;
@@ -234,6 +258,19 @@ async function submit() {
   box-shadow: 0 4px 14px -3px rgba(226, 18, 33, 0.35);
 }
 
+.forgot {
+  margin: 4px 0 0;
+  text-align: center;
+}
+
+.forgot a {
+  color: var(--color-brand);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .register-card {
   margin-top: 18px;
   padding: 14px;
@@ -266,5 +303,86 @@ async function submit() {
   text-align: center;
   color: #5c5e65;
   font-size: 12px;
+}
+
+@media (min-width: 1024px) {
+  .role-switch {
+    max-width: 340px;
+    margin: 8px auto 28px;
+  }
+
+  .role-switch button {
+    font-size: 14px;
+    padding: 10px 14px;
+  }
+
+  .login-lead {
+    margin-bottom: 24px;
+  }
+
+  .badge {
+    font-size: 11px;
+    padding: 5px 12px;
+  }
+
+  .login-lead h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .login-lead p:last-child {
+    max-width: 420px;
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .note,
+  .error,
+  .login-form,
+  .register-card {
+    max-width: 440px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .login-form {
+    gap: 14px;
+  }
+
+  .login-field > span:first-child {
+    font-size: 13px;
+  }
+
+  .login-field input {
+    font-size: 15px;
+  }
+
+  .btn.enter {
+    height: 52px;
+    font-size: 17px;
+  }
+
+  .forgot a {
+    font-size: 14px;
+  }
+
+  .register-card {
+    margin-top: 24px;
+    padding: 18px;
+  }
+
+  .register-card p {
+    font-size: 13px;
+  }
+
+  .register-card a {
+    min-height: 48px;
+    font-size: 15px;
+  }
+
+  .signature {
+    margin-top: 28px;
+    font-size: 13px;
+  }
 }
 </style>

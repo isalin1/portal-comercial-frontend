@@ -164,7 +164,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
+  <ScreenFrame storefront back bar fluid>
     <header class="head">
       <h2>Zonas</h2>
       <p>Consulta y gestiona las zonas existentes o registra una nueva zona en el sistema.</p>
@@ -206,85 +206,89 @@ onMounted(async () => {
         </div>
       </div>
       <p v-if="!visibleZones.length" class="empty">Todavía no hay zonas.</p>
-      <article v-for="zone in visibleZones" :key="zone.id">
-        <template v-if="editingId === zone.id">
-          <label class="line"><span>Nombre de la zona</span><input v-model="editingName" /></label>
-          <label class="line">
-            <span>Departamento</span>
-            <select v-model.number="editingDepartmentId">
-              <option v-for="item in departments" :key="item.id" :value="item.id">{{ item.name }}</option>
-            </select>
-          </label>
-          <label class="line">
-            <span>Provincia</span>
-            <select v-model.number="editingProvinceId">
-              <option :value="0">Elige la provincia</option>
-              <option v-for="item in editingProvinces" :key="item.id" :value="item.id">{{ item.name }}</option>
-            </select>
-          </label>
-          <label class="line">
-            <span>Distrito</span>
-            <select v-model.number="editingDistrictId">
-              <option :value="0">Elige el distrito</option>
-              <option v-for="item in editingDistricts" :key="item.id" :value="item.id">{{ item.name }}</option>
-            </select>
-          </label>
-          <div class="pair">
-            <button class="yes" type="button" :disabled="saving" @click="saveZone">Guardar</button>
-            <button class="no" type="button" :disabled="saving" @click="editingId = 0">Cancelar</button>
-          </div>
-        </template>
-        <template v-else>
-          <div class="title">
-            <h4>{{ zone.name }}</h4>
-            <em>{{ businessLabel(zone.businessCount) }}</em>
-          </div>
-          <p>{{ zone.district?.name || 'Sin distrito' }}<template v-if="zone.district?.province"> · {{ zone.district.province.name }}</template></p>
-          <div class="pair">
-            <button class="yes" type="button" @click="startEdit(zone)">Editar</button>
-            <button class="no" type="button" @click="confirmId = zone.id">Eliminar</button>
-          </div>
-          <div v-if="confirmId === zone.id" class="warn">
-            <p>¿Eliminar esta zona?</p>
+      <div v-else class="list">
+        <article v-for="zone in visibleZones" :key="zone.id">
+          <template v-if="editingId === zone.id">
+            <label class="line"><span>Nombre de la zona</span><input v-model="editingName" /></label>
+            <label class="line">
+              <span>Departamento</span>
+              <select v-model.number="editingDepartmentId">
+                <option v-for="item in departments" :key="item.id" :value="item.id">{{ item.name }}</option>
+              </select>
+            </label>
+            <label class="line">
+              <span>Provincia</span>
+              <select v-model.number="editingProvinceId">
+                <option :value="0">Elige la provincia</option>
+                <option v-for="item in editingProvinces" :key="item.id" :value="item.id">{{ item.name }}</option>
+              </select>
+            </label>
+            <label class="line">
+              <span>Distrito</span>
+              <select v-model.number="editingDistrictId">
+                <option :value="0">Elige el distrito</option>
+                <option v-for="item in editingDistricts" :key="item.id" :value="item.id">{{ item.name }}</option>
+              </select>
+            </label>
             <div class="pair">
-              <button class="yes" type="button" :disabled="saving" @click="removeZone(zone)">Confirmar</button>
-              <button class="no" type="button" :disabled="saving" @click="confirmId = 0">Desistir</button>
+              <button class="yes" type="button" :disabled="saving" @click="saveZone">Guardar</button>
+              <button class="no" type="button" :disabled="saving" @click="editingId = 0">Cancelar</button>
             </div>
-          </div>
-        </template>
-      </article>
+          </template>
+          <template v-else>
+            <div class="title">
+              <h4>{{ zone.name }}</h4>
+              <em>{{ businessLabel(zone.businessCount) }}</em>
+            </div>
+            <p>{{ zone.district?.name || 'Sin distrito' }}<template v-if="zone.district?.province"> · {{ zone.district.province.name }}</template></p>
+            <div class="pair">
+              <button class="yes" type="button" @click="startEdit(zone)">Editar</button>
+              <button class="no" type="button" @click="confirmId = zone.id">Eliminar</button>
+            </div>
+            <div v-if="confirmId === zone.id" class="warn">
+              <p>¿Eliminar esta zona?</p>
+              <div class="pair">
+                <button class="yes" type="button" :disabled="saving" @click="removeZone(zone)">Confirmar</button>
+                <button class="no" type="button" :disabled="saving" @click="confirmId = 0">Desistir</button>
+              </div>
+            </div>
+          </template>
+        </article>
+      </div>
     </section>
     <button v-if="!showForm" class="add" type="button" @click="showForm = true">+ Registrar nueva zona</button>
-    <form v-else class="sheet" @submit.prevent="addZone">
+    <form v-else class="sheet create" @submit.prevent="addZone">
       <header class="bar">
         <h3>Registrar zona</h3>
         <button class="close" type="button" aria-label="Cerrar" @click="closeForm">×</button>
       </header>
-      <label class="line">
-        <span>Departamento</span>
-        <select v-model.number="departmentId" required>
-          <option :value="0" disabled>Elige el departamento</option>
-          <option v-for="item in departments" :key="item.id" :value="item.id">{{ item.name }}</option>
-        </select>
-      </label>
-      <label class="line">
-        <span>Provincia</span>
-        <select v-model.number="provinceId" :disabled="!departmentId" required>
-          <option :value="0" disabled>Elige la provincia</option>
-          <option v-for="item in provinceOptions" :key="item.id" :value="item.id">{{ item.name }}</option>
-        </select>
-      </label>
-      <label class="line">
-        <span>Distrito</span>
-        <select v-model.number="districtId" :disabled="!provinceId" required>
-          <option :value="0" disabled>Elige el distrito</option>
-          <option v-for="item in districtOptions" :key="item.id" :value="item.id">{{ item.name }}</option>
-        </select>
-      </label>
-      <label class="line">
-        <span>Nombre de la zona</span>
-        <input v-model="name" required placeholder="Nombre de la zona" />
-      </label>
+      <div class="create-grid">
+        <label class="line">
+          <span>Departamento</span>
+          <select v-model.number="departmentId" required>
+            <option :value="0" disabled>Elige el departamento</option>
+            <option v-for="item in departments" :key="item.id" :value="item.id">{{ item.name }}</option>
+          </select>
+        </label>
+        <label class="line">
+          <span>Provincia</span>
+          <select v-model.number="provinceId" :disabled="!departmentId" required>
+            <option :value="0" disabled>Elige la provincia</option>
+            <option v-for="item in provinceOptions" :key="item.id" :value="item.id">{{ item.name }}</option>
+          </select>
+        </label>
+        <label class="line">
+          <span>Distrito</span>
+          <select v-model.number="districtId" :disabled="!provinceId" required>
+            <option :value="0" disabled>Elige el distrito</option>
+            <option v-for="item in districtOptions" :key="item.id" :value="item.id">{{ item.name }}</option>
+          </select>
+        </label>
+        <label class="line">
+          <span>Nombre de la zona</span>
+          <input v-model="name" required placeholder="Nombre de la zona" />
+        </label>
+      </div>
       <div class="pair">
         <button class="yes tall" type="submit" :disabled="saving || !districtId || !name.trim()">Aceptar</button>
         <button class="no tall" type="button" @click="closeForm">Cancelar</button>
@@ -355,4 +359,120 @@ onMounted(async () => {
 .empty { margin: 0; color: #64748b; font-size: 13px; }
 .warn { margin-top: 8px; color: #9f1239; font-size: 12px; }
 .warn p { margin: 0 0 8px; }
+
+.list,
+.create-grid {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  .head {
+    margin-bottom: 24px;
+  }
+
+  .head h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .head p {
+    max-width: 520px;
+    margin-top: 10px;
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .sheet {
+    padding: 20px 22px;
+    margin-bottom: 18px;
+  }
+
+  .bar h3 {
+    font-size: 13px;
+  }
+
+  .finder {
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+
+  .finder-head strong,
+  .finder-head button {
+    font-size: 12px;
+  }
+
+  .geo {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .geo select {
+    min-height: 48px;
+    font-size: 13px;
+  }
+
+  .list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .sheet article {
+    margin-bottom: 0;
+    padding: 16px 18px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sheet h4 {
+    font-size: 16px;
+  }
+
+  .title em {
+    font-size: 12px;
+  }
+
+  .sheet article > p {
+    font-size: 13px;
+    flex: 1;
+  }
+
+  .yes,
+  .no {
+    min-height: 40px;
+    font-size: 13px;
+  }
+
+  .add {
+    max-width: 360px;
+    min-height: 52px;
+    font-size: 14px;
+  }
+
+  .create {
+    max-width: 720px;
+  }
+
+  .create-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 14px;
+  }
+
+  .create-grid .line {
+    margin-bottom: 0;
+  }
+
+  .create .pair {
+    max-width: 360px;
+    margin-top: 16px;
+  }
+
+  .empty {
+    font-size: 14px;
+  }
+}
 </style>

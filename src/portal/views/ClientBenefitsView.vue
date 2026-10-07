@@ -5,10 +5,10 @@ const benefits = ['Sorteos mensuales', 'Promociones y ofertas', 'Beneficios espe
 </script>
 
 <template>
-  <ScreenFrame storefront back>
+  <ScreenFrame storefront back fluid>
     <div class="client-benefits">
       <p class="pill">Cliente</p>
-      <h2>Todo lo que necesitas en un solo lugar... a un click de distancia</h2>
+      <h2>Todo lo que necesitas en un solo lugar... a un <span>click</span> de distancia</h2>
       <p class="lead">Beneficios exclusivos para afiliados</p>
       <div class="grid">
         <article v-for="benefit in benefits" :key="benefit">
@@ -52,6 +52,10 @@ h2 {
   line-height: 26px;
   font-weight: 700;
   letter-spacing: -0.015em;
+}
+
+h2 span {
+  color: var(--color-brand);
 }
 
 .lead {
@@ -127,5 +131,68 @@ article span {
   color: var(--color-brand);
   font-weight: 700;
   text-decoration: none;
+}
+
+@media (min-width: 1024px) {
+  .client-benefits {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  .pill {
+    margin: 8px 0 14px;
+    padding: 6px 14px;
+    font-size: 13px;
+  }
+
+  h2 {
+    max-width: 560px;
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .lead {
+    margin-top: 12px;
+    font-size: 16px;
+  }
+
+  .grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    margin: 28px 0 24px;
+  }
+
+  article {
+    padding: 22px 14px;
+  }
+
+  h3 {
+    min-height: 52px;
+    font-size: 17px;
+    line-height: 22px;
+  }
+
+  article span {
+    margin-top: 10px;
+    padding: 4px 12px;
+    font-size: 11px;
+  }
+
+  .free {
+    margin: 8px 0 18px;
+    font-size: 18px;
+  }
+
+  .btn.go {
+    max-width: 320px;
+    margin: 0 auto;
+    height: 52px;
+    font-size: 16px;
+  }
+
+  .login-link {
+    margin-top: 18px;
+    font-size: 14px;
+  }
 }
 </style>

@@ -6,7 +6,7 @@ import { apiError, http } from '../api'
 type Row = {
   id: number
   name: string
-  kind: 'CARTA' | 'MENU'
+  kind: 'CARTA' | 'MENU' | 'OFERTA_DIA'
   menuPart: 'ENTRADA' | 'SEGUNDO' | 'REFRESCO' | null
   menuOfferName?: string
   menuOfferNames?: string[]
@@ -32,8 +32,10 @@ const menuGroups = [
 ] as const
 
 const hasMenu = computed(() => items.value.some((item) => item.kind === 'MENU'))
-const carta = computed(() => items.value.filter((item) => item.kind !== 'MENU'))
+const dailyOffers = computed(() => items.value.filter((item) => item.kind === 'OFERTA_DIA'))
+const carta = computed(() => items.value.filter((item) => item.kind === 'CARTA'))
 const cartaReady = computed(() => carta.value.filter((item) => item.available).length)
+const offersReady = computed(() => dailyOffers.value.filter((item) => item.available).length)
 const menuTypes = computed(() => {
   const grouped = new Map<string, Row[]>()
   for (const item of items.value.filter((entry) => entry.kind === 'MENU')) {
@@ -104,31 +106,50 @@ async function save() {
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
+  <ScreenFrame storefront back bar fluid>
     <header class="head">
       <h2>Disponibilidad del día</h2>
     </header>
     <p v-if="error" class="error">{{ error }}</p>
     <p v-if="message" class="ok">{{ message }}</p>
-    <label class="when">
-      <span>Fecha de vigencia</span>
-      <input v-model="date" type="date" />
-    </label>
-    <p class="note">Los productos y servicios salen marcados. El menú se desmarca a las 00:00 y hay que marcarlo de nuevo cada día. Quitar la marca oculta ese ítem en la fecha elegida.</p>
+    <div class="filters">
+      <label class="when">
+        <span>Fecha de vigencia</span>
+        <input v-model="date" type="date" />
+      </label>
+      <p class="note">Los productos y servicios salen marcados. El menú y las ofertas del día se desmarcan a las 00:00 y hay que autorizarlos de nuevo cada día. Solo las ofertas marcadas aparecen en el carrusel del rubro.</p>
+    </div>
     <p v-if="!items.length" class="hint">No hay platos registrados.</p>
-    <template v-else-if="hasMenu">
+    <template v-if="dailyOffers.length">
+      <header class="band">
+        <h3>Ofertas del día</h3>
+        <span>{{ offersReady }} autorizada{{ offersReady === 1 ? '' : 's' }}</span>
+      </header>
+      <div class="list">
+        <label v-for="item in dailyOffers" :key="`offer-${item.id}`" class="dish">
+          <span>
+            <strong>{{ item.name }}</strong>
+            <small>{{ item.categoryName }}</small>
+          </span>
+          <input v-model="item.available" class="mark" type="checkbox" />
+        </label>
+      </div>
+    </template>
+    <template v-if="hasMenu">
       <header class="band">
         <h3>Platos a la carta</h3>
         <span>{{ cartaReady }} disponible{{ cartaReady === 1 ? '' : 's' }}</span>
       </header>
       <p v-if="!carta.length" class="hint">No hay platos a la carta.</p>
-      <label v-for="item in carta" :key="item.id" class="dish">
-        <span>
-          <strong>{{ item.name }}</strong>
-          <small>{{ item.categoryName }}</small>
-        </span>
-        <input v-model="item.available" class="mark" type="checkbox" />
-      </label>
+      <div v-if="carta.length" class="list">
+        <label v-for="item in carta" :key="item.id" class="dish">
+          <span>
+            <strong>{{ item.name }}</strong>
+            <small>{{ item.categoryName }}</small>
+          </span>
+          <input v-model="item.available" class="mark" type="checkbox" />
+        </label>
+      </div>
       <section v-for="type in menuTypes" :key="type.name" class="menu">
         <header>
           <div>
@@ -137,31 +158,35 @@ async function save() {
           </div>
           <span>Menú del día</span>
         </header>
-        <section v-for="group in type.parts" :key="`${type.name}-${group.key}`">
-          <h4>{{ group.label }} <small>Seleccionar activas</small></h4>
-          <p v-if="!group.items.length" class="hint">No hay opciones de {{ group.label.toLowerCase() }}.</p>
-          <label v-for="item in group.items" :key="`${type.name}-${item.id}`" class="dish">
-            <span>
-              <strong>{{ item.name }}</strong>
-              <small>{{ item.categoryName }}</small>
-            </span>
-            <input v-model="item.available" class="mark" type="checkbox" />
-          </label>
-        </section>
+        <div class="parts">
+          <section v-for="group in type.parts" :key="`${type.name}-${group.key}`">
+            <h4>{{ group.label }} <small>Seleccionar activas</small></h4>
+            <p v-if="!group.items.length" class="hint">No hay opciones de {{ group.label.toLowerCase() }}.</p>
+            <label v-for="item in group.items" :key="`${type.name}-${item.id}`" class="dish">
+              <span>
+                <strong>{{ item.name }}</strong>
+                <small>{{ item.categoryName }}</small>
+              </span>
+              <input v-model="item.available" class="mark" type="checkbox" />
+            </label>
+          </section>
+        </div>
       </section>
     </template>
-    <template v-else>
+    <template v-else-if="carta.length || !dailyOffers.length">
       <header class="band">
         <h3>Productos y servicios</h3>
-        <span>{{ items.filter((item) => item.available).length }} disponible{{ items.filter((item) => item.available).length === 1 ? '' : 's' }}</span>
+        <span>{{ items.filter((item) => item.kind === 'CARTA' && item.available).length }} disponible{{ items.filter((item) => item.kind === 'CARTA' && item.available).length === 1 ? '' : 's' }}</span>
       </header>
-      <label v-for="item in items" :key="item.id" class="dish">
-        <span>
-          <strong>{{ item.name }}</strong>
-          <small>{{ item.categoryName }}</small>
-        </span>
-        <input v-model="item.available" class="mark" type="checkbox" />
-      </label>
+      <div class="list">
+        <label v-for="item in carta" :key="item.id" class="dish">
+          <span>
+            <strong>{{ item.name }}</strong>
+            <small>{{ item.categoryName }}</small>
+          </span>
+          <input v-model="item.available" class="mark" type="checkbox" />
+        </label>
+      </div>
     </template>
     <button class="save" type="button" :disabled="saving || !items.length" @click="save">
       {{ saving ? 'Guardando…' : 'Guardar disponibilidad' }}
@@ -352,5 +377,83 @@ async function save() {
 
 .save:disabled {
   opacity: 0.55;
+}
+
+@media (min-width: 1024px) {
+  .head {
+    margin-bottom: 20px;
+  }
+
+  .head h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .filters {
+    display: grid;
+    grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+    gap: 14px;
+    margin-bottom: 8px;
+    align-items: stretch;
+  }
+
+  .when,
+  .note {
+    margin-bottom: 0;
+    height: 100%;
+  }
+
+  .note,
+  .hint {
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .band h3 {
+    font-size: 16px;
+  }
+
+  .list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .dish {
+    margin-bottom: 0;
+  }
+
+  .dish strong {
+    font-size: 17px;
+  }
+
+  .menu {
+    padding: 20px 22px;
+    margin-bottom: 16px;
+  }
+
+  .menu h3 {
+    font-size: 18px;
+  }
+
+  .menu .parts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .menu .parts > section {
+    min-width: 0;
+  }
+
+  .menu .parts .dish {
+    margin-bottom: 10px;
+  }
+
+  .save {
+    max-width: 420px;
+    margin: 12px auto 0;
+  }
 }
 </style>

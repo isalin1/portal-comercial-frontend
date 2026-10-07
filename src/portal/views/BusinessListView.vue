@@ -69,7 +69,7 @@ function activity(person: { agendaControl: boolean; isActive: boolean }) {
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
+  <ScreenFrame storefront back bar fluid>
     <header class="head">
       <p v-if="auth.userType === 'EMPRESARIO'" class="pill">Panel Empresario</p>
       <h2>Datos empresa y punto de venta</h2>
@@ -378,5 +378,71 @@ function activity(person: { agendaControl: boolean; isActive: boolean }) {
 
 .zone {
   text-align: center;
+}
+
+@media (min-width: 1024px) {
+  .head {
+    margin-bottom: 24px;
+  }
+
+  .pill {
+    font-size: 11px;
+    padding: 5px 14px;
+  }
+
+  .head h2 {
+    font-size: 28px;
+    line-height: 34px;
+  }
+
+  .shop {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+    align-items: start;
+  }
+
+  .sheet {
+    padding: 22px 24px;
+  }
+
+  .sheet h3 {
+    font-size: 18px;
+  }
+
+  .sheet header p,
+  .block > span,
+  .zone {
+    font-size: 13px;
+  }
+
+  .block strong {
+    font-size: 15px;
+  }
+
+  .block p {
+    font-size: 13px;
+  }
+
+  .edit {
+    font-size: 13px;
+  }
+
+  .shop > .empty,
+  .shop > .add {
+    grid-column: 1 / -1;
+  }
+
+  .add,
+  .other {
+    max-width: 420px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .other {
+    margin-top: 4px;
+  }
 }
 </style>

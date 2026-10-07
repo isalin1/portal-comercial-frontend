@@ -122,22 +122,24 @@ onMounted(async () => {
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
+  <ScreenFrame storefront back bar fluid>
     <header class="head">
       <h2>Usuarios y estados</h2>
       <p>Gestión centralizada de cuentas, vigencias y suscripciones</p>
     </header>
     <p v-if="error" class="error">{{ error }}</p>
-    <div class="segment">
-      <button type="button" :class="{ on: filter === 'activos' }" @click="filter = 'activos'">Activos</button>
-      <button type="button" :class="{ on: filter === 'inactivos' }" @click="filter = 'inactivos'">Inactivos</button>
-      <button type="button" :class="{ on: filter === 'todos' }" @click="filter = 'todos'">Todos</button>
+    <div class="toolbar">
+      <div class="segment">
+        <button type="button" :class="{ on: filter === 'activos' }" @click="filter = 'activos'">Activos</button>
+        <button type="button" :class="{ on: filter === 'inactivos' }" @click="filter = 'inactivos'">Inactivos</button>
+        <button type="button" :class="{ on: filter === 'todos' }" @click="filter = 'todos'">Todos</button>
+      </div>
+      <label class="seek">
+        <span>Buscar usuario</span>
+        <input v-model="search" type="search" placeholder="Nombre, celular, correo o negocio" />
+        <button v-if="search" type="button" aria-label="Limpiar búsqueda" @click="search = ''">×</button>
+      </label>
     </div>
-    <label class="seek">
-      <span>Buscar usuario</span>
-      <input v-model="search" type="search" placeholder="Nombre, celular, correo o negocio" />
-      <button v-if="search" type="button" aria-label="Limpiar búsqueda" @click="search = ''">×</button>
-    </label>
     <section class="rule">
       <header>
         <h3>Vigencia del plan Free para nuevos empresarios</h3>
@@ -172,6 +174,7 @@ onMounted(async () => {
           <p>{{ planName(user) }} · {{ user.isActive ? 'Activo' : 'Inactivo' }} · {{ businessName(user) }}</p>
           <p :class="{ missing: !user.businesses?.[0]?.category }">{{ categoryName(user) }}</p>
           <p class="end">Fin: {{ day(user.vigenciaEnd) }}</p>
+          <p v-if="user.pendingEmpresario" class="wait">Solicita plan empresario · sigue como cliente</p>
           <p v-if="user.pendingPlan" class="wait">Luego: {{ pendingName(user) }}</p>
           <router-link :to="{ name: 'vigencia', params: { id: user.id } }">Editar</router-link>
         </article>
@@ -329,4 +332,108 @@ onMounted(async () => {
   text-decoration: none;
 }
 .empty { margin: 0 0 12px; color: #64748b; font-size: 13px; }
+
+.toolbar {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  .head {
+    margin-bottom: 24px;
+  }
+
+  .head h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .head p {
+    max-width: 480px;
+    margin: 10px auto 0;
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .toolbar {
+    display: grid;
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    gap: 16px;
+    align-items: end;
+    margin-bottom: 8px;
+  }
+
+  .segment {
+    margin-bottom: 0;
+  }
+
+  .segment button {
+    min-height: 40px;
+    font-size: 13px;
+  }
+
+  .seek {
+    margin-bottom: 14px;
+  }
+
+  .seek span {
+    font-size: 13px;
+  }
+
+  .rule {
+    padding: 18px 20px;
+    margin-bottom: 20px;
+  }
+
+  .rule h3 {
+    font-size: 16px;
+  }
+
+  .pills {
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .pills button {
+    min-height: 40px;
+    padding: 0 16px;
+    font-size: 13px;
+  }
+
+  .group {
+    margin-bottom: 22px;
+  }
+
+  .group h3 {
+    font-size: 14px;
+  }
+
+  .tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .tiles article {
+    padding: 16px 18px;
+  }
+
+  .tiles h4 {
+    font-size: 16px;
+  }
+
+  .tiles p {
+    font-size: 12px;
+  }
+
+  .tiles a {
+    min-height: 40px;
+    font-size: 13px;
+  }
+
+  .empty {
+    font-size: 14px;
+  }
+}
 </style>

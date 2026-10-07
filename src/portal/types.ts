@@ -11,10 +11,31 @@ export interface AuthUser {
   termsAccepted?: boolean
 }
 
+export interface DailyOffer {
+  id: string
+  kind: 'OFERTA_DIA'
+  title: string
+  detail?: string
+  businessId: number
+  businessName: string
+  categoryId: number | null
+  imageUrl?: string | null
+  price: number | null
+  compareAtPrice?: number | null
+  descriptionId?: number
+  itemId?: number
+  footer: string
+  cta: string
+  clientOrders: boolean
+  whatsappUrl?: string | null
+}
+
 export interface Rubro {
   id: number
   name: string
   imageUrl?: string | null
+  businessCount?: number
+  dailyOffers?: DailyOffer[]
   categories?: Category[]
 }
 
@@ -77,8 +98,9 @@ export interface Item {
   pointSaleId: number
   categoryId: number
   category?: Category
-  kind?: 'CARTA' | 'MENU'
+  kind?: 'CARTA' | 'MENU' | 'OFERTA_DIA'
   menuPart?: 'ENTRADA' | 'SEGUNDO' | 'REFRESCO' | null
+  compareAtPrice?: string | number | null
   menuOfferId?: number | null
   menuOfferIds?: number[]
   menuOffer?: { id: number; name: string; price: string | number } | null
@@ -166,6 +188,8 @@ export interface Business {
   showPhone?: boolean
   clientOrders?: boolean
   hasMenu?: boolean
+  affiliationLabel?: string
+  affiliationTone?: 'gold' | 'green' | 'blue' | 'gray'
   pendingApproval?: boolean
   rejected?: boolean
   professionals?: { id: number; name: string; phone: string | null; agendaControl: boolean; isActive: boolean }[]
@@ -196,6 +220,7 @@ export interface AccountPlan {
 export interface AccountUser {
   id: number
   isActive: boolean
+  pendingEmpresario?: boolean
   termsAcceptedAt?: string | null
   plan?: string | null
   planCatalog?: AccountPlan | null

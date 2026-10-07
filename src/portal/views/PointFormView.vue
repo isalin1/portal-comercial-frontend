@@ -225,7 +225,7 @@ async function submit() {
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
+  <ScreenFrame storefront back bar fluid>
     <header class="head">
       <p v-if="auth.userType === 'EMPRESARIO'" class="pill">Perfil Empresario</p>
       <h2>{{ editing ? 'Editar punto de venta' : 'Registro de datos punto de venta' }}</h2>
@@ -577,5 +577,61 @@ async function submit() {
 
 .pros .add:disabled {
   opacity: 0.55;
+}
+
+@media (min-width: 1024px) {
+  .head {
+    margin-bottom: 24px;
+  }
+
+  .pill {
+    font-size: 13px;
+    padding: 5px 14px;
+  }
+
+  .head h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .head > p:not(.pill),
+  .hint {
+    font-size: 14px;
+  }
+
+  .groups {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+
+  .group {
+    padding: 22px 24px;
+  }
+
+  .group h3 {
+    font-size: 18px;
+  }
+
+  .group.ship,
+  .group.pros,
+  .groups > .save,
+  .groups > .hint {
+    grid-column: 1 / -1;
+  }
+
+  .week {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+
+  .save {
+    max-width: 420px;
+    margin: 8px auto 0;
+  }
+
+  .groups > .hint {
+    text-align: center;
+  }
 }
 </style>

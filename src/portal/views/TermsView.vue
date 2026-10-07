@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import ScreenFrame from '../components/ScreenFrame.vue'
 import { apiError, http } from '../api'
 import { safeNext, usePortalAuth } from '../auth'
+import { openWhatsAppChat } from '../whatsapp'
 
 const auth = usePortalAuth()
 const route = useRoute()
@@ -23,28 +24,30 @@ function decline() {
 async function continueFlow() {
   error.value = ''
   if (!accepted.value) {
-    return decline()
+    error.value = 'Marca la casilla para autorizar el uso de tu información'
+    return
   }
   if (!canSend.value) {
     error.value = 'Inicia sesión para registrar tu autorización'
     return
   }
+  const pendingData = pending.value
+  const whatsappUrl = pendingData?.whatsappUrl
   saving.value = true
   try {
     if (auth.isAuthenticated && auth.user) {
       await http.post('/auth/terminos', { accepted: true })
       auth.setUser({ ...auth.user, termsAccepted: true })
-    } else if (pending.value) {
+    } else if (pendingData) {
       await http.post('/auth/terminos-registro', {
-        email: pending.value.email,
-        password: pending.value.password,
+        email: pendingData.email,
+        password: pendingData.password,
         accepted: true,
       })
     }
-    const whatsappUrl = pending.value?.whatsappUrl
     auth.clearAcceptance()
     if (whatsappUrl) {
-      window.location.assign(whatsappUrl)
+      openWhatsAppChat(whatsappUrl)
       return
     }
     const next = safeNext(route.query.next)
@@ -62,33 +65,37 @@ async function continueFlow() {
 </script>
 
 <template>
-  <ScreenFrame storefront>
-    <header class="head">
-      <h2>Términos y condiciones</h2>
-      <p>Autorización de uso de tu información</p>
-    </header>
-    <article class="sheet">
-      <header>
-        <h3>Uso de tu información</h3>
-        <span>Una sola vez</span>
+  <ScreenFrame storefront fluid>
+    <div class="wrap">
+      <header class="head">
+        <h2>Términos y condiciones</h2>
+        <p>Autorización de uso de tu información</p>
       </header>
-      <p>Para usar una cuenta de cliente o empresario debes autorizar el uso de tu información.</p>
-      <p>Usamos nombres, correo y celular para identificarte y contactarte. Si eres empresario, también los datos del negocio para publicarlo y atender pedidos o citas. Si eres cliente, para registrar tus pedidos y mostrarte los comercios de tu zona.</p>
-      <p class="note">Si no autorizas, vuelves a la información pública. La cuenta queda sin uso hasta que aceptes.</p>
-      <label class="check">
-        <input v-model="accepted" type="checkbox" />
-        <span>Autorizo el uso de mi información de acuerdo con estos términos y condiciones</span>
-      </label>
-    </article>
-    <p v-if="error" class="error">{{ error }}</p>
-    <p v-if="!canSend" class="hint">
-      Inicia sesión para registrar tu autorización.
-      <router-link :to="{ name: 'login' }">Ingresar</router-link>
-    </p>
-    <button class="go" type="button" :disabled="saving || !canSend" @click="continueFlow">
-      {{ saving ? 'Guardando…' : 'Continuar' }}
-    </button>
-    <button class="leave" type="button" :disabled="saving" @click="decline">No acepto</button>
+      <article class="sheet">
+        <header>
+          <h3>Uso de tu información</h3>
+          <span>Una sola vez</span>
+        </header>
+        <p>Para usar una cuenta de cliente o empresario debes autorizar el uso de tu información.</p>
+        <p>Usamos nombres, correo y celular para identificarte y contactarte. Si eres empresario, también los datos del negocio para publicarlo y atender pedidos o citas. Si eres cliente, para registrar tus pedidos y mostrarte los comercios de tu zona.</p>
+        <p class="note">Si no autorizas, vuelves a la información pública. La cuenta queda sin uso hasta que aceptes.</p>
+        <label class="check">
+          <input v-model="accepted" type="checkbox" />
+          <span>Autorizo el uso de mi información de acuerdo con estos términos y condiciones</span>
+        </label>
+      </article>
+      <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="!canSend" class="hint">
+        Inicia sesión para registrar tu autorización.
+        <router-link :to="{ name: 'login' }">Ingresar</router-link>
+      </p>
+      <div class="actions">
+        <button class="go" type="button" :disabled="saving || !canSend || !accepted" @click="continueFlow">
+          {{ saving ? 'Guardando…' : 'Continuar' }}
+        </button>
+        <button class="leave" type="button" :disabled="saving" @click="decline">No acepto</button>
+      </div>
+    </div>
   </ScreenFrame>
 </template>
 
@@ -247,6 +254,78 @@ async function continueFlow() {
 
 .go:disabled,
 .leave:disabled {
-  opacity: 0.55;
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  .head {
+    margin-bottom: 20px;
+  }
+
+  .head h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .head p,
+  .hint {
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .sheet {
+    padding: 22px 24px;
+    margin-bottom: 18px;
+  }
+
+  .sheet h3 {
+    font-size: 12px;
+  }
+
+  .sheet p {
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .note {
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .check {
+    margin-top: 16px;
+    padding-top: 16px;
+  }
+
+  .check span {
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  .go,
+  .leave {
+    margin-top: 0;
+    min-height: 52px;
+    font-size: 16px;
+  }
 }
 </style>

@@ -34,7 +34,8 @@ const visible = computed(() =>
     : items.value,
 )
 
-const cartaItems = computed(() => visible.value.filter((item) => item.kind !== 'MENU'))
+const cartaItems = computed(() => visible.value.filter((item) => item.kind !== 'MENU' && item.kind !== 'OFERTA_DIA'))
+const dailyOffers = computed(() => visible.value.filter((item) => item.kind === 'OFERTA_DIA'))
 
 const menuParts = [
   { key: 'ENTRADA', label: 'Entradas' },
@@ -167,7 +168,7 @@ function money(price: string | number) {
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
+  <ScreenFrame storefront back bar fluid>
     <header class="head">
       <h2>{{ category ? category.name : 'Nuestros productos y servicios' }}</h2>
       <p v-if="category?.rubro">{{ category.rubro.name }}</p>
@@ -175,6 +176,40 @@ function money(price: string | number) {
     <p v-if="isMenuCategory" class="lead">Cada plato de menú se asigna a un tipo. Sin esa asignación no aparece en la tienda.</p>
     <p v-if="error" class="error">{{ error }}</p>
     <p v-if="message" class="ok">{{ message }}</p>
+    <section class="group">
+      <header class="banner deal">
+        <h3>Ofertas del día</h3>
+        <p>Campañas del rubro. Autorízalas cada día en Disponibilidad</p>
+      </header>
+      <router-link
+        v-if="auth.userType === 'EMPRESARIO'"
+        class="add soft"
+        :to="{ name: 'item-form', query: categoryId ? { categoria: categoryId, tipo: 'oferta' } : { tipo: 'oferta' } }"
+      >Registrar oferta del día</router-link>
+      <p v-if="!dailyOffers.length" class="hint">Todavía no hay ofertas del día registradas.</p>
+      <article v-for="item in dailyOffers" :key="item.id" class="dish">
+        <div v-if="item.imageUrl" class="photo">
+          <img :src="item.imageUrl" :alt="item.name" />
+          <span :class="item.isActive ? 'on' : 'off'">{{ item.isActive ? 'Activo' : 'Inactivo' }}</span>
+        </div>
+        <div class="body">
+          <div class="top">
+            <h3>{{ item.name }}</h3>
+            <router-link class="edit" :to="{ name: 'item-edit', params: { id: item.id }, query: categoryId ? { categoria: categoryId } : {} }">Editar</router-link>
+          </div>
+          <p v-if="!item.imageUrl" class="state">{{ item.isActive ? 'Activo' : 'Inactivo' }}</p>
+          <p v-if="item.compareAtPrice != null" class="desc">Precio referencia <b>{{ money(item.compareAtPrice) }}</b></p>
+          <p v-for="line in item.descriptions" :key="line.id" class="desc">
+            {{ line.description }}
+            <b>{{ line.price == null ? 'Sin precio' : money(line.price) }}</b>
+          </p>
+          <p v-if="!item.descriptions.length" class="hint">Sin características.</p>
+          <p class="hint">Para mostrarla hoy en el inicio del rubro, márcala en Disponibilidad del día.</p>
+          <p v-if="item.pendingApproval" class="pending">Pendiente de aprobación de textos e imágenes</p>
+          <RejectionNote :rejected="item.rejected" @dismiss="quitar('ITEM', item.id)" />
+        </div>
+      </article>
+    </section>
     <section v-if="isMenuCategory" class="group">
       <header class="banner">
         <h3>Menús del día</h3>
@@ -221,7 +256,7 @@ function money(price: string | number) {
         v-if="auth.userType === 'EMPRESARIO'"
         class="add"
         :to="{ name: 'item-form', query: categoryId ? { categoria: categoryId, tipo: 'menu' } : { tipo: 'menu' } }"
-      >Registrar plato para menú del día</router-link>
+      >Crear Item</router-link>
       <h4 class="inside">Asignación de platos</h4>
       <p v-if="unassignedMenu.length" class="hint">Hay platos sin tipo de menú. No salen en la tienda hasta asignarlos.</p>
       <section v-for="part in menuParts" :key="part.key">
@@ -265,15 +300,15 @@ function money(price: string | number) {
     </section>
     <section v-if="isMenuCategory" class="group">
       <header class="banner">
-        <h3>Platos a la carta</h3>
-        <p>Venta por porción, sin tipo de menú</p>
+        <h3>Productos o servicios</h3>
+        <p>Con precio propio, fuera del menú del día</p>
       </header>
       <router-link
         v-if="auth.userType === 'EMPRESARIO'"
         class="add soft"
         :to="{ name: 'item-form', query: categoryId ? { categoria: categoryId, tipo: 'carta' } : { tipo: 'carta' } }"
-      >Registrar plato a la carta</router-link>
-      <p v-if="!cartaItems.length" class="hint">No hay platos a la carta.</p>
+      >Crear Item</router-link>
+      <p v-if="!cartaItems.length" class="hint">No hay productos o servicios registrados.</p>
       <article v-for="item in cartaItems" :key="item.id" class="dish">
         <div v-if="item.imageUrl" class="photo">
           <img :src="item.imageUrl" :alt="item.name" />
@@ -296,8 +331,8 @@ function money(price: string | number) {
       </article>
     </section>
     <template v-else>
-      <p v-if="!visible.length" class="hint">No hay ítems en esta categoría.</p>
-      <article v-for="item in visible" :key="item.id" class="dish">
+      <p v-if="!cartaItems.length && !dailyOffers.length" class="hint">No hay ítems en esta categoría.</p>
+      <article v-for="item in cartaItems" :key="item.id" class="dish">
         <div v-if="item.imageUrl" class="photo">
           <img :src="item.imageUrl" :alt="item.name" />
         </div>
@@ -319,8 +354,8 @@ function money(price: string | number) {
       <router-link
         v-if="auth.userType === 'EMPRESARIO'"
         class="add"
-        :to="{ name: 'item-form', query: categoryId ? { categoria: categoryId } : {} }"
-      >Registrar ítem</router-link>
+        :to="{ name: 'item-form', query: categoryId ? { categoria: categoryId, tipo: 'carta' } : { tipo: 'carta' } }"
+      >Crear Item</router-link>
     </template>
   </ScreenFrame>
 </template>
@@ -591,8 +626,110 @@ h4 {
   color: var(--color-brand);
 }
 
+.banner.deal {
+  background: linear-gradient(90deg, #dc2626, #e11d48);
+}
+
 .add.soft {
   background: #d1fae5;
   color: #047857;
+}
+
+@media (min-width: 1024px) {
+  .head {
+    margin-bottom: 12px;
+  }
+
+  .head h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .head p,
+  .lead,
+  .hint,
+  .assign > p,
+  .desc,
+  .state {
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .lead {
+    max-width: 640px;
+    margin: 0 auto 20px;
+  }
+
+  .group {
+    margin-bottom: 28px;
+  }
+
+  .banner {
+    padding: 18px 22px;
+  }
+
+  .banner h3 {
+    font-size: 20px;
+  }
+
+  .banner p {
+    font-size: 13px;
+  }
+
+  .group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+
+  .banner,
+  .group > .add,
+  .group > .hint,
+  .group > .inside,
+  .group > h4,
+  .group > section {
+    grid-column: 1 / -1;
+  }
+
+  .group > section {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .group > section > h4,
+  .group > section > .hint {
+    grid-column: 1 / -1;
+  }
+
+  .dish {
+    margin-bottom: 0;
+    display: grid;
+    grid-template-columns: 180px minmax(0, 1fr);
+    min-height: 160px;
+  }
+
+  .photo {
+    height: 100%;
+    min-height: 160px;
+  }
+
+  .body {
+    padding: 18px 20px;
+  }
+
+  .top h3 {
+    font-size: 18px;
+  }
+
+  .sheet {
+    margin-bottom: 0;
+    padding: 18px 20px;
+  }
+
+  .add {
+    max-width: 360px;
+  }
 }
 </style>

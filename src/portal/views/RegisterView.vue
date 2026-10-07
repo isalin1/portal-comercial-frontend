@@ -2,8 +2,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ScreenFrame from '../components/ScreenFrame.vue'
-import { apiError, http } from '../api'
+import { apiError, apiErrorCode, http } from '../api'
 import { usePortalAuth } from '../auth'
+import { whatsappChatUrl } from '../whatsapp'
 import type { UserType } from '../types'
 
 const route = useRoute()
@@ -30,7 +31,9 @@ const loading = ref(false)
 const showPassword = ref(false)
 const showRepeat = ref(false)
 const salesPhone = ref('940485657')
-const buying = computed(() => tipo.value === 'EMPRESARIO' && route.query.compra === '1')
+const upgradePrompt = ref(false)
+const isFreePlan = computed(() => tipo.value === 'EMPRESARIO' && route.query.plan === 'free')
+const wantsWhatsApp = computed(() => tipo.value === 'EMPRESARIO' && !isFreePlan.value)
 
 function salesDigits() {
   let value = salesPhone.value.replace(/\D/g, '')
@@ -39,8 +42,12 @@ function salesDigits() {
   return value
 }
 
+function buildWhatsAppUrl(text: string) {
+  return whatsappChatUrl(salesDigits(), text)
+}
+
 onMounted(async () => {
-  if (!buying.value) return
+  if (tipo.value !== 'EMPRESARIO') return
   try {
     const { data } = await http.get<{ salesWhatsapp: string }>('/settings')
     if (data.salesWhatsapp) salesPhone.value = data.salesWhatsapp
@@ -49,9 +56,27 @@ onMounted(async () => {
   }
 })
 
-async function submit() {
+async function goLogin(tipoLogin: 'cliente' | 'empresario', note?: string) {
+  if (note) {
+    sessionStorage.setItem('portal_login_note', note)
+  }
+  await router.replace({ name: 'login', query: { tipo: tipoLogin } })
+}
+
+async function finishEmpresarioFlow(resultMessage: string) {
+  message.value = resultMessage
+  const name = `${form.value.firstName} ${form.value.lastName}`.trim()
+  const plan = String(route.query.afiliacion || '').trim() || 'elegido'
+  const text = `Hola, soy ${name}. Deseo comprar un Plan de Afiliacion. Por favor, confirmarme el costo del Plan ${plan} y el numero al que debo hacer el pago`
+  const whatsappUrl = wantsWhatsApp.value ? buildWhatsAppUrl(text) : undefined
+  auth.holdAcceptance({ email: form.value.email, password: form.value.password, whatsappUrl })
+  await router.push({ name: 'terms', query: { next: whatsappUrl ? '/login?tipo=empresario' : '/login?tipo=empresario' } })
+}
+
+async function submit(confirmUpgrade = false) {
   error.value = ''
   message.value = ''
+  upgradePrompt.value = false
   if (form.value.password !== form.value.passwordRepeat) {
     error.value = 'Las contraseñas no coinciden'
     return
@@ -60,78 +85,111 @@ async function submit() {
   const email = form.value.email
   const password = form.value.password
   try {
-    message.value = await auth.register({
+    const result = await auth.register({
       firstName: form.value.firstName,
       lastName: form.value.lastName,
       email,
       phone: form.value.phone.replace(/\D/g, ''),
       password,
       userType: tipo.value,
-      ...(route.query.plan === 'free' ? { plan: 'free' } : {}),
+      ...(isFreePlan.value ? { plan: 'free' } : {}),
+      ...(confirmUpgrade ? { confirmUpgrade: true } : {}),
     })
     if (tipo.value === 'CLIENTE') {
       await auth.login(email, password)
+      await router.push({ name: 'terms', query: { next: '/' } })
+      return
     }
-    const name = `${form.value.firstName} ${form.value.lastName}`.trim()
-    const plan = String(route.query.afiliacion || '').trim() || 'elegido'
-    const text = `Hola, soy ${name}. Deseo comprar un Plan de Afiliacion. Por favor, confirmarme el costo del Plan ${plan} y el numero al que debo hacer el pago`
-    const whatsappUrl = buying.value
-      ? `https://web.whatsapp.com/send?phone=${salesDigits()}&text=${encodeURIComponent(text)}`
-      : undefined
-    if (tipo.value !== 'CLIENTE') {
-      auth.holdAcceptance({ email, password, whatsappUrl })
-    }
-    await router.push({ name: 'terms', query: { next: whatsappUrl ? '' : '/' } })
-    return
+    await finishEmpresarioFlow(result.message)
   } catch (err) {
-    error.value = apiError(err)
+    const code = apiErrorCode(err)
+    const text = apiError(err)
+    if (code === 'ALREADY_EMPRESARIO' || /no se requiere registrar como cliente/i.test(text)) {
+      await goLogin('empresario', text)
+      return
+    }
+    if (
+      code === 'CLIENT_UPGRADE_REQUIRED' ||
+      /cambiar tu registro a empresario/i.test(text)
+    ) {
+      upgradePrompt.value = true
+      message.value = text
+      return
+    }
+    error.value = text
   } finally {
     loading.value = false
   }
 }
+
+async function acceptUpgrade() {
+  await submit(true)
+}
+
+async function declineUpgrade() {
+  upgradePrompt.value = false
+  await goLogin('empresario')
+}
 </script>
 
 <template>
-  <ScreenFrame storefront back>
+  <ScreenFrame storefront back fluid>
     <div class="client-register">
       <h2>{{ title }}</h2>
       <p class="lead">{{ tipo === 'EMPRESARIO' ? 'Completa tus datos para registrar tu negocio' : 'Completa tus datos para afiliarte gratis y acceder a todos los beneficios' }}</p>
       <p v-if="error" class="error">{{ error }}</p>
-      <p v-if="message" class="ok">{{ message }}</p>
-      <form @submit.prevent="submit">
-        <label class="reg-field">
-          <span>Nombres <em>Requerido</em></span>
-          <input v-model="form.firstName" required placeholder="Ingresa tus nombres" autocomplete="given-name" />
-        </label>
-        <label class="reg-field">
-          <span>Apellidos</span>
-          <input v-model="form.lastName" required placeholder="Ingresa tus apellidos" autocomplete="family-name" />
-        </label>
-        <label class="reg-field">
-          <span>Correo</span>
-          <input v-model="form.email" type="email" required placeholder="ejemplo@correo.com" autocomplete="email" />
-        </label>
-        <label class="reg-field">
-          <span>Teléfono</span>
-          <span class="dial">
-            <b>+51</b>
-            <input v-model="form.phone" type="tel" required maxlength="11" inputmode="numeric" placeholder="987 654 321" autocomplete="tel" />
-          </span>
-        </label>
-        <label class="reg-field">
-          <span>Contraseña</span>
-          <span class="secret">
-            <input v-model="form.password" :type="showPassword ? 'text' : 'password'" required minlength="6" placeholder="Mínimo 6 caracteres" autocomplete="new-password" />
-            <button type="button" @click="showPassword = !showPassword">{{ showPassword ? 'Ocultar' : 'Ver' }}</button>
-          </span>
-        </label>
-        <label class="reg-field">
-          <span>Repetir contraseña</span>
-          <span class="secret">
-            <input v-model="form.passwordRepeat" :type="showRepeat ? 'text' : 'password'" required minlength="6" placeholder="Confirma tu contraseña" autocomplete="new-password" />
-            <button type="button" @click="showRepeat = !showRepeat">{{ showRepeat ? 'Ocultar' : 'Ver' }}</button>
-          </span>
-        </label>
+      <p v-if="message && !upgradePrompt" class="ok">{{ message }}</p>
+
+      <div v-if="upgradePrompt" class="upgrade-box" role="dialog" aria-labelledby="upgrade-title">
+        <p id="upgrade-title">{{ message }}</p>
+        <div class="upgrade-actions">
+          <button class="btn go" type="button" :disabled="loading" @click="acceptUpgrade">
+            {{ loading ? 'Continuando…' : 'Sí, continuar' }}
+          </button>
+          <button class="btn soft" type="button" :disabled="loading" @click="declineUpgrade">No</button>
+        </div>
+      </div>
+
+      <form v-else @submit.prevent="submit(false)">
+        <div class="pair">
+          <label class="reg-field">
+            <span>Nombres <em>Requerido</em></span>
+            <input v-model="form.firstName" required placeholder="Ingresa tus nombres" autocomplete="given-name" />
+          </label>
+          <label class="reg-field">
+            <span>Apellidos</span>
+            <input v-model="form.lastName" required placeholder="Ingresa tus apellidos" autocomplete="family-name" />
+          </label>
+        </div>
+        <div class="pair">
+          <label class="reg-field">
+            <span>Correo</span>
+            <input v-model="form.email" type="email" required placeholder="ejemplo@correo.com" autocomplete="email" />
+          </label>
+          <label class="reg-field">
+            <span>Teléfono</span>
+            <span class="dial">
+              <b>+51</b>
+              <input v-model="form.phone" type="tel" required maxlength="11" inputmode="numeric" placeholder="987 654 321" autocomplete="tel" />
+            </span>
+          </label>
+        </div>
+        <div class="pair">
+          <label class="reg-field">
+            <span>Contraseña</span>
+            <span class="secret">
+              <input v-model="form.password" :type="showPassword ? 'text' : 'password'" required minlength="6" placeholder="Mínimo 6 caracteres" autocomplete="new-password" />
+              <button type="button" @click="showPassword = !showPassword">{{ showPassword ? 'Ocultar' : 'Ver' }}</button>
+            </span>
+          </label>
+          <label class="reg-field">
+            <span>Repetir contraseña</span>
+            <span class="secret">
+              <input v-model="form.passwordRepeat" :type="showRepeat ? 'text' : 'password'" required minlength="6" placeholder="Confirma tu contraseña" autocomplete="new-password" />
+              <button type="button" @click="showRepeat = !showRepeat">{{ showRepeat ? 'Ocultar' : 'Ver' }}</button>
+            </span>
+          </label>
+        </div>
         <p class="safe">Tus datos se usan solo para crear tu cuenta de {{ tipo === 'EMPRESARIO' ? 'empresario' : 'cliente' }}.</p>
         <button class="btn go" type="submit" :disabled="loading">{{ loading ? 'Registrando…' : 'Registrarme' }}</button>
       </form>
@@ -279,6 +337,55 @@ async function submit() {
   box-shadow: 0 4px 14px -3px rgba(226, 18, 33, 0.35);
 }
 
+.btn.soft {
+  height: 48px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: #fff;
+  color: var(--color-ink);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.upgrade-box {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0 0 16px;
+  padding: 16px;
+  border-radius: var(--radius-card);
+  background: var(--color-brand);
+  border: 1px solid var(--color-brand-dark);
+  box-shadow: 0 8px 20px -6px rgba(226, 18, 33, 0.45);
+  text-align: left;
+}
+
+.upgrade-box p {
+  margin: 0;
+  color: #fff;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 700;
+}
+
+.upgrade-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.upgrade-box .btn.go {
+  background: #fff;
+  color: var(--color-brand);
+  box-shadow: none;
+}
+
+.upgrade-box .btn.soft {
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: transparent;
+  color: #fff;
+}
+
 .login-link {
   margin: 14px 0 0;
   text-align: center;
@@ -291,5 +398,90 @@ async function submit() {
   font-weight: 700;
   text-decoration: underline;
   text-underline-offset: 4px;
+}
+
+.pair {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (min-width: 1024px) {
+  .client-register {
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  .client-register h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .lead {
+    max-width: 420px;
+    margin: 10px auto 24px;
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .client-register form {
+    gap: 14px;
+  }
+
+  .pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+
+  .reg-field > span:first-child {
+    font-size: 13px;
+  }
+
+  .reg-field input,
+  .dial {
+    height: 52px;
+    font-size: 15px;
+  }
+
+  .dial input {
+    height: 52px;
+  }
+
+  .safe {
+    font-size: 13px;
+    line-height: 18px;
+    padding: 12px 14px;
+  }
+
+  .btn.go,
+  .btn.soft {
+    max-width: 320px;
+    margin: 4px auto 0;
+    height: 52px;
+  }
+
+  .upgrade-box {
+    max-width: 480px;
+    margin: 0 auto 20px;
+    padding: 20px 22px;
+  }
+
+  .upgrade-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .upgrade-box .btn.go,
+  .upgrade-box .btn.soft {
+    max-width: none;
+    margin: 0;
+  }
+
+  .login-link {
+    margin-top: 18px;
+    font-size: 15px;
+  }
 }
 </style>

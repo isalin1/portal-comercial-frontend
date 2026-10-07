@@ -2,8 +2,12 @@
 import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ScreenFrame from '../components/ScreenFrame.vue'
+import WhatsAppAccess from '../components/WhatsAppAccess.vue'
+import AffiliationBadge from '../components/AffiliationBadge.vue'
 import { apiError, http } from '../api'
+import { usePortalAuth } from '../auth'
 import { menuOfferIdsOf, type Business, type PointSale } from '../types'
+import { clientDisplayName, professionalAppointmentWhatsApp, whatsappChatUrl } from '../whatsapp'
 import { zoneParams } from '../zone'
 
 type MarketDetail = {
@@ -16,12 +20,18 @@ type MarketDetail = {
 
 const route = useRoute()
 const router = useRouter()
+const auth = usePortalAuth()
 const market = ref<MarketDetail | null>(null)
 const error = ref('')
 const search = ref('')
 
+function isProfessional(business: Business) {
+  return /profesional/i.test(business.rubro?.name || '')
+}
+
 function canAsk(business: Business) {
   if (business.publicOffer === false) return false
+  if (isProfessional(business)) return false
   return business.clientOrders !== false
 }
 
@@ -29,6 +39,21 @@ function planLevel(business: Business) {
   if (business.publicOffer === false) return 'free'
   if (canAsk(business)) return 'order'
   return 'catalog'
+}
+
+function whatsappLabel(business: Business) {
+  if (isProfessional(business)) return 'Consulta y agenda tu cita aqui'
+  return planLevel(business) === 'order'
+    ? 'Crea tu pedido directamente o por WhatsApp'
+    : 'Pedir directamente por WhatsApp'
+}
+
+function whatsappHref(business: Business, point: PointSale) {
+  if (!point.whatsappUrl) return ''
+  if (isProfessional(business)) {
+    return professionalAppointmentWhatsApp(point.whatsappUrl, clientDisplayName(auth.user))
+  }
+  return whatsappChatUrl(point.whatsappUrl)
 }
 
 function availability(business: Business) {
@@ -124,26 +149,36 @@ function usesMenu(business: Business) {
 }
 
 function pedir(business: Business, descriptionId?: number) {
-  router.push({
-    name: 'business',
+  const target = {
+    name: 'business' as const,
     params: { id: business.id },
     query: {
       ...(business.categoryId ? { categoria: business.categoryId } : {}),
       ...(descriptionId ? { agregar: descriptionId } : {}),
     },
-  })
+  }
+  if (!auth.isAuthenticated) {
+    router.push({ name: 'login', query: { tipo: 'cliente', redirect: router.resolve(target).fullPath } })
+    return
+  }
+  router.push(target)
 }
 
 function pedirMenu(business: Business, itemId: number, offerId: number) {
-  router.push({
-    name: 'business',
+  const target = {
+    name: 'business' as const,
     params: { id: business.id },
     query: {
       ...(business.categoryId ? { categoria: business.categoryId } : {}),
       elige: itemId,
       tipo: offerId,
     },
-  })
+  }
+  if (!auth.isAuthenticated) {
+    router.push({ name: 'login', query: { tipo: 'cliente', redirect: router.resolve(target).fullPath } })
+    return
+  }
+  router.push(target)
 }
 
 </script>
@@ -174,6 +209,7 @@ function pedirMenu(business: Business, itemId: number, offerId: number) {
             <router-link class="name" :to="{ name: 'business', params: { id: business.id }, query: business.categoryId ? { categoria: business.categoryId } : {} }">
               <h3>{{ business.commercialName }}</h3>
             </router-link>
+            <AffiliationBadge class="affil" :label="business.affiliationLabel" :tone="business.affiliationTone" />
             <p v-if="business.commercialDescription" class="blurb">{{ business.commercialDescription }}</p>
             <div v-if="business.pointSales?.length" class="places">
               <article v-for="point in business.pointSales" :key="point.id">
@@ -183,14 +219,13 @@ function pedirMenu(business: Business, itemId: number, offerId: number) {
             </div>
             <p v-else class="empty">Este negocio todavía no tiene punto de venta.</p>
             <div v-if="(business.pointSales || []).some((point) => point.whatsappUrl)" class="contacts">
-              <a
+              <WhatsAppAccess
                 v-for="point in (business.pointSales || []).filter((point) => point.whatsappUrl)"
                 :key="point.id"
-                class="wa"
-                :href="point.whatsappUrl"
-              >
-                {{ planLevel(business) === 'order' ? 'Crea tu pedido directamente o por WhatsApp' : 'Pedir directamente por WhatsApp' }}
-              </a>
+                :business-id="business.id"
+                :href="whatsappHref(business, point)"
+                :label="whatsappLabel(business)"
+              />
             </div>
             <div v-else-if="planLevel(business) === 'free' && phonesOf(business).length" class="contacts">
               <a v-for="phone in phonesOf(business)" :key="phone" class="call" :href="`tel:${phone}`">Llamar: {{ phone }}</a>
@@ -203,7 +238,7 @@ function pedirMenu(business: Business, itemId: number, offerId: number) {
                   <strong>{{ item.name }}</strong>
                   <div v-for="line in item.descriptions" :key="line.id || line.description" class="line">
                     <span>{{ line.description }}</span>
-                    <span v-if="line.price != null" class="price">{{ money(line.price) }}</span>
+                    <span v-if="line.price != null && !isProfessional(business)" class="price">{{ money(line.price) }}</span>
                     <button v-if="canAsk(business) && line.id && line.price != null" class="add" type="button" @click="pedir(business, line.id)">Agregar</button>
                   </div>
                 </article>
@@ -232,13 +267,13 @@ function pedirMenu(business: Business, itemId: number, offerId: number) {
                   <strong>{{ item.name }}</strong>
                   <div v-for="line in item.descriptions" :key="line.id || line.description" class="line">
                     <span>{{ line.description }}</span>
-                    <span v-if="line.price != null" class="price">{{ money(line.price) }}</span>
+                    <span v-if="line.price != null && !isProfessional(business)" class="price">{{ money(line.price) }}</span>
                     <button v-if="canAsk(business) && line.id && line.price != null" class="add" type="button" @click="pedir(business, line.id)">Agregar</button>
                   </div>
                 </article>
               </div>
             </template>
-            <p v-if="planLevel(business) === 'catalog' && (business.pointSales || []).some((point) => point.whatsappUrl)" class="hint">Haz tu pedido o consulta los platos del día por WhatsApp</p>
+            <p v-if="planLevel(business) === 'catalog' && !isProfessional(business) && (business.pointSales || []).some((point) => point.whatsappUrl)" class="hint">Haz tu pedido o consulta los platos del día por WhatsApp</p>
           </article>
         </div>
       </section>
@@ -351,6 +386,10 @@ function pedirMenu(business: Business, itemId: number, offerId: number) {
 .name {
   text-decoration: none;
   color: inherit;
+}
+
+.affil {
+  margin: 8px 0 0;
 }
 
 .shop h3,

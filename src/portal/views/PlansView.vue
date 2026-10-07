@@ -222,8 +222,8 @@ async function saveRubro(rubro: RubroRow) {
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
-    <article v-if="pending" class="sheet">
+  <ScreenFrame storefront back bar fluid>
+    <article v-if="pending" class="sheet confirm">
       <h3>Confirmar cambio de funcionalidades</h3>
       <p class="warn">Los cambios realizados son muy importantes. Modifican las reglas de negocio de {{ pending.title }}.</p>
       <ul>
@@ -244,31 +244,33 @@ async function saveRubro(rubro: RubroRow) {
         <button type="button" :class="{ on: filter === 'Todos' }" @click="filter = 'Todos'">Todos ({{ plans.length }})</button>
         <button v-for="name in filters" :key="name" type="button" :class="{ on: filter === name }" @click="filter = name">{{ name }}</button>
       </div>
-      <article v-for="plan in visiblePlans" :key="plan.id" class="sheet">
-        <header>
-          <b>{{ plan.commercialName.slice(0, 1) }}</b>
-          <div>
-            <h3>{{ plan.commercialName }}</h3>
-            <small>{{ planSubtitle(plan) }}</small>
+      <div class="plans">
+        <article v-for="plan in visiblePlans" :key="plan.id" class="sheet">
+          <header>
+            <b>{{ plan.commercialName.slice(0, 1) }}</b>
+            <div>
+              <h3>{{ plan.commercialName }}</h3>
+              <small>{{ planSubtitle(plan) }}</small>
+            </div>
+            <em>{{ planBadge(plan) }}</em>
+          </header>
+          <div class="grid">
+            <label><span>Nombre</span><input v-model="plan.name" /></label>
+            <label><span>Días</span><input v-model.number="plan.days" type="number" min="1" /></label>
+            <label><span>Nombre comercial</span><input v-model="plan.commercialName" /></label>
+            <label><span>Precio (S/.)</span><input v-model.number="plan.price" type="number" min="0" step="0.1" /></label>
           </div>
-          <em>{{ planBadge(plan) }}</em>
-        </header>
-        <div class="grid">
-          <label><span>Nombre</span><input v-model="plan.name" /></label>
-          <label><span>Días</span><input v-model.number="plan.days" type="number" min="1" /></label>
-          <label><span>Nombre comercial</span><input v-model="plan.commercialName" /></label>
-          <label><span>Precio (S/.)</span><input v-model.number="plan.price" type="number" min="0" step="0.1" /></label>
-        </div>
-        <div class="perms">
-          <span>Permisos y características</span>
-          <label v-for="flag in flags" :key="flag[0]">
-            <input v-model="plan[flag[0]]" type="checkbox" />
-            <span :class="{ off: !plan[flag[0]] }">{{ flag[0] === 'agenda' ? agendaLabel(plan) : flag[1] }}</span>
-          </label>
-        </div>
-        <button class="save" type="button" @click="askPlan(plan)">Guardar plan</button>
-      </article>
-      <section class="sheet">
+          <div class="perms">
+            <span>Permisos y características</span>
+            <label v-for="flag in flags" :key="flag[0]">
+              <input v-model="plan[flag[0]]" type="checkbox" />
+              <span :class="{ off: !plan[flag[0]] }">{{ flag[0] === 'agenda' ? agendaLabel(plan) : flag[1] }}</span>
+            </label>
+          </div>
+          <button class="save" type="button" @click="askPlan(plan)">Guardar plan</button>
+        </article>
+      </div>
+      <section class="sheet quota-sheet">
         <header>
           <b>A</b>
           <div>
@@ -287,26 +289,28 @@ async function saveRubro(rubro: RubroRow) {
         <h2>Agenda según rubro</h2>
         <p>Un rubro nuevo nace con pedidos y sin agenda. Solo el rubro profesional usa agenda.</p>
       </header>
-      <article v-for="rubro in rubros" :key="rubro.id" class="sheet">
-        <header>
-          <b>{{ rubro.name.slice(0, 1) }}</b>
-          <div>
-            <h3>{{ rubro.name }}</h3>
-            <small>{{ rubro.allowsAgenda ? 'Con agenda' : 'Sin agenda' }}</small>
+      <div class="rubros">
+        <article v-for="rubro in rubros" :key="rubro.id" class="sheet">
+          <header>
+            <b>{{ rubro.name.slice(0, 1) }}</b>
+            <div>
+              <h3>{{ rubro.name }}</h3>
+              <small>{{ rubro.allowsAgenda ? 'Con agenda' : 'Sin agenda' }}</small>
+            </div>
+          </header>
+          <div class="perms">
+            <label>
+              <input v-model="rubro.allowsOrders" type="checkbox" />
+              <span :class="{ off: !rubro.allowsOrders }">Pedidos</span>
+            </label>
+            <label>
+              <input v-model="rubro.allowsAgenda" type="checkbox" />
+              <span :class="{ off: !rubro.allowsAgenda }">Agenda</span>
+            </label>
           </div>
-        </header>
-        <div class="perms">
-          <label>
-            <input v-model="rubro.allowsOrders" type="checkbox" />
-            <span :class="{ off: !rubro.allowsOrders }">Pedidos</span>
-          </label>
-          <label>
-            <input v-model="rubro.allowsAgenda" type="checkbox" />
-            <span :class="{ off: !rubro.allowsAgenda }">Agenda</span>
-          </label>
-        </div>
-        <button class="save" type="button" @click="askRubro(rubro)">Guardar rubro</button>
-      </article>
+          <button class="save" type="button" @click="askRubro(rubro)">Guardar rubro</button>
+        </article>
+      </div>
     </template>
   </ScreenFrame>
 </template>
@@ -412,4 +416,112 @@ async function saveRubro(rubro: RubroRow) {
 .warn { margin: 8px 0; color: #9f1239; font-size: 13px; }
 .hint { color: #64748b; font-size: 13px; }
 ul { margin: 0 0 8px; padding-left: 18px; font-size: 13px; }
+
+.plans,
+.rubros {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  .head {
+    margin-bottom: 20px;
+  }
+
+  .head h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .head p {
+    max-width: 520px;
+    margin: 10px auto 0;
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .pills {
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+
+  .pills button {
+    min-height: 36px;
+    padding: 0 16px;
+    font-size: 13px;
+  }
+
+  .plans {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 8px;
+    align-items: start;
+  }
+
+  .plans .sheet {
+    margin-bottom: 0;
+    padding: 20px 22px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .plans .save {
+    margin-top: auto;
+  }
+
+  .sheet h3 {
+    font-size: 18px;
+  }
+
+  .sheet header small {
+    font-size: 13px;
+  }
+
+  .grid {
+    gap: 12px;
+  }
+
+  .perms {
+    gap: 10px;
+    padding: 14px 16px;
+  }
+
+  .quota-sheet {
+    max-width: 560px;
+    padding: 20px 22px;
+  }
+
+  .quota input {
+    max-width: 160px;
+  }
+
+  .rubros {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+
+  .rubros .sheet {
+    margin-bottom: 0;
+    padding: 18px 20px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .rubros .save {
+    margin-top: auto;
+  }
+
+  .confirm {
+    max-width: 560px;
+    margin: 0 auto 14px;
+    padding: 22px 24px;
+  }
+}
 </style>

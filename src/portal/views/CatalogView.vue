@@ -215,7 +215,7 @@ async function removeCategory() {
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
+  <ScreenFrame storefront back bar fluid>
     <header class="head">
       <h2>Rubros y Categorías</h2>
       <p>Administración centralizada de rubros comerciales, categorías y mercados asignados.</p>
@@ -265,57 +265,59 @@ async function removeCategory() {
         <p>Cada mercado pertenece a una zona. El empresario lo elige después de elegir el distrito y la zona.</p>
       </header>
       <p v-if="!markets.length" class="empty">Todavía no hay mercados.</p>
-      <article v-for="market in markets" :key="market.id" class="market">
-        <template v-if="editingMarketId === market.id">
-          <label class="line"><span>Nombre del mercado</span><input v-model="editingMarketName" /></label>
-          <label class="line">
-            <span>Distrito</span>
-            <select v-model.number="editingMarketDistrictId" @change="editingMarketZoneId = 0">
-              <option :value="0">Elige el distrito</option>
-              <option v-for="district in zoneDistricts" :key="district.id" :value="district.id">
-                {{ district.name }}<template v-if="district.provinceName"> · {{ district.provinceName }}</template>
-              </option>
-            </select>
-          </label>
-          <label class="line">
-            <span>Zona</span>
-            <select v-model.number="editingMarketZoneId" :disabled="!editingMarketDistrictId">
-              <option :value="0">Elige la zona</option>
-              <option v-for="zone in zonesOf(editingMarketDistrictId)" :key="zone.id" :value="zone.id">{{ zone.name }}</option>
-            </select>
-          </label>
-          <img v-if="editingMarketPreview" :src="editingMarketPreview" :alt="editingMarketName" class="cover" />
-          <label class="line">
-            <span>Imagen</span>
-            <input :key="editingImageKey" type="file" accept="image/jpeg,image/png,image/webp" @change="onMarketImage($event, true)" />
-          </label>
-          <button v-if="editingMarketPreview" class="no wide" type="button" @click="clearMarketPhoto">Quitar foto</button>
-          <div class="pair">
-            <button class="yes" type="button" :disabled="saving" @click="saveMarket">Guardar</button>
-            <button class="no" type="button" :disabled="saving" @click="editingMarketId = 0">Cancelar</button>
-          </div>
-        </template>
-        <template v-else>
-          <div class="shot">
-            <img v-if="market.imageUrl" :src="market.imageUrl" :alt="market.name" />
-            <div v-else class="blank tall" />
-            <span v-if="!market.zone">Sin zona</span>
-          </div>
-          <h4>{{ market.name }}</h4>
-          <p v-if="market.zone">{{ market.zone.name }}<template v-if="market.zone.district?.name"> · {{ market.zone.district.name }}</template></p>
-          <div class="pair">
-            <button class="yes" type="button" @click="startMarketEdit(market)">Editar</button>
-            <button class="no" type="button" @click="confirmMarketId = market.id">Eliminar</button>
-          </div>
-          <div v-if="confirmMarketId === market.id" class="warn">
-            <p>¿Eliminar este mercado? Los negocios quedan sin mercado.</p>
+      <div v-else class="markets">
+        <article v-for="market in markets" :key="market.id" class="market">
+          <template v-if="editingMarketId === market.id">
+            <label class="line"><span>Nombre del mercado</span><input v-model="editingMarketName" /></label>
+            <label class="line">
+              <span>Distrito</span>
+              <select v-model.number="editingMarketDistrictId" @change="editingMarketZoneId = 0">
+                <option :value="0">Elige el distrito</option>
+                <option v-for="district in zoneDistricts" :key="district.id" :value="district.id">
+                  {{ district.name }}<template v-if="district.provinceName"> · {{ district.provinceName }}</template>
+                </option>
+              </select>
+            </label>
+            <label class="line">
+              <span>Zona</span>
+              <select v-model.number="editingMarketZoneId" :disabled="!editingMarketDistrictId">
+                <option :value="0">Elige la zona</option>
+                <option v-for="zone in zonesOf(editingMarketDistrictId)" :key="zone.id" :value="zone.id">{{ zone.name }}</option>
+              </select>
+            </label>
+            <img v-if="editingMarketPreview" :src="editingMarketPreview" :alt="editingMarketName" class="cover" />
+            <label class="line">
+              <span>Imagen</span>
+              <input :key="editingImageKey" type="file" accept="image/jpeg,image/png,image/webp" @change="onMarketImage($event, true)" />
+            </label>
+            <button v-if="editingMarketPreview" class="no wide" type="button" @click="clearMarketPhoto">Quitar foto</button>
             <div class="pair">
-              <button class="yes" type="button" :disabled="saving" @click="removeMarket(market)">Confirmar</button>
-              <button class="no" type="button" :disabled="saving" @click="confirmMarketId = 0">Desistir</button>
+              <button class="yes" type="button" :disabled="saving" @click="saveMarket">Guardar</button>
+              <button class="no" type="button" :disabled="saving" @click="editingMarketId = 0">Cancelar</button>
             </div>
-          </div>
-        </template>
-      </article>
+          </template>
+          <template v-else>
+            <div class="shot">
+              <img v-if="market.imageUrl" :src="market.imageUrl" :alt="market.name" />
+              <div v-else class="blank tall" />
+              <span v-if="!market.zone">Sin zona</span>
+            </div>
+            <h4>{{ market.name }}</h4>
+            <p v-if="market.zone">{{ market.zone.name }}<template v-if="market.zone.district?.name"> · {{ market.zone.district.name }}</template></p>
+            <div class="pair">
+              <button class="yes" type="button" @click="startMarketEdit(market)">Editar</button>
+              <button class="no" type="button" @click="confirmMarketId = market.id">Eliminar</button>
+            </div>
+            <div v-if="confirmMarketId === market.id" class="warn">
+              <p>¿Eliminar este mercado? Los negocios quedan sin mercado.</p>
+              <div class="pair">
+                <button class="yes" type="button" :disabled="saving" @click="removeMarket(market)">Confirmar</button>
+                <button class="no" type="button" :disabled="saving" @click="confirmMarketId = 0">Desistir</button>
+              </div>
+            </div>
+          </template>
+        </article>
+      </div>
       <button v-if="!showMarketForm" class="add soft" type="button" @click="showMarketForm = true">Agregar mercado</button>
       <div v-else class="form">
         <label class="line"><span>Nuevo mercado</span><input v-model="marketName" placeholder="Nombre del mercado" /></label>
@@ -350,10 +352,12 @@ async function removeCategory() {
         <h3>Unidades</h3>
         <p>Sirven para cualquier categoría. El empresario elige una al registrar la variante.</p>
       </header>
-      <article v-for="unit in units" :key="unit.id" class="unit">
-        <strong>{{ unit.name }}</strong>
-        <button class="no" type="button" :disabled="saving" @click="removeUnit(unit)">Eliminar</button>
-      </article>
+      <div v-if="units.length" class="units">
+        <article v-for="unit in units" :key="unit.id" class="unit">
+          <strong>{{ unit.name }}</strong>
+          <button class="no" type="button" :disabled="saving" @click="removeUnit(unit)">Eliminar</button>
+        </article>
+      </div>
       <button v-if="!showUnitForm" class="add" type="button" @click="showUnitForm = true">Agregar unidad</button>
       <form v-else @submit.prevent="addUnit">
         <label class="line"><span>Nueva unidad</span><input v-model="unitName" placeholder="Kg, Unidad, Litro" /></label>
@@ -477,4 +481,125 @@ async function removeCategory() {
 .warn { margin-bottom: 10px; padding: 10px; border-radius: 12px; background: #fff5f5; color: #9f1239; font-size: 12px; }
 .warn p { margin: 0; }
 .no.wide { width: 100%; margin-bottom: 8px; }
+
+.markets,
+.units {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  .head {
+    margin-bottom: 24px;
+  }
+
+  .head h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .head p {
+    max-width: 560px;
+    margin: 10px auto 0;
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .group {
+    margin-bottom: 18px;
+    padding: 20px 22px;
+  }
+
+  .group > header.rubro-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .group h3 {
+    font-size: 13px;
+  }
+
+  .actions {
+    margin-top: 0;
+    grid-template-columns: auto auto auto;
+    flex: none;
+  }
+
+  .actions .yes,
+  .actions .no {
+    min-height: 40px;
+    padding: 0 14px;
+    font-size: 12px;
+  }
+
+  .tiles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .tiles article {
+    padding: 10px;
+  }
+
+  .tiles img,
+  .blank {
+    height: 120px;
+  }
+
+  .tiles h4 {
+    margin: 10px 4px 0;
+    font-size: 14px;
+  }
+
+  .yes,
+  .no {
+    min-height: 36px;
+    font-size: 12px;
+  }
+
+  .add {
+    max-width: 320px;
+    min-height: 48px;
+    font-size: 13px;
+  }
+
+  .markets {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 12px;
+  }
+
+  .market {
+    margin-bottom: 0;
+    height: 100%;
+  }
+
+  .market h4 {
+    font-size: 15px;
+  }
+
+  .stack p,
+  .empty,
+  .market > p {
+    font-size: 13px;
+  }
+
+  .units {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .unit {
+    margin-bottom: 0;
+  }
+
+  .form {
+    max-width: 560px;
+  }
+}
 </style>

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ScreenFrame from '../components/ScreenFrame.vue'
 import { apiError, http } from '../api'
+import { openWhatsAppChat } from '../whatsapp'
 import type { AccountPlan, AccountUser } from '../types'
 
 const route = useRoute()
@@ -176,7 +177,24 @@ async function register() {
     if (form.value.password) payload.password = form.value.password
     await http.patch(`/user/${user.value.id}`, payload)
     if (planId.value) {
-      await http.patch(`/user/${user.value.id}/vigencia`, { planId: planId.value })
+      const plan = paymentPlans.value.find((item) => item.id === planId.value)
+      const { data } = await http.patch<{
+        whatsappPhone?: string | null
+        whatsappMessage?: string | null
+        whatsappUrl?: string | null
+      }>(`/user/${user.value.id}/vigencia`, { planId: planId.value })
+
+      const phone = data.whatsappPhone || form.value.phone.trim()
+      const name = `${form.value.firstName.trim()} ${form.value.lastName.trim()}`.trim() || 'empresario'
+      const rawPlan = plan?.name?.trim() || plan?.commercialName?.trim() || 'plan'
+      const planName = /^plan\s+/i.test(rawPlan) ? rawPlan.replace(/^plan\s+/i, '') : rawPlan
+      const message =
+        data.whatsappMessage?.trim() || `Hola ${name}, tu plan ${planName} ha sido activado`
+
+      if (phone) {
+        openWhatsAppChat(phone, message)
+        return
+      }
     }
     await router.push({ name: 'empresarios' })
   } catch (err) {

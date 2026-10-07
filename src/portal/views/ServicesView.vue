@@ -95,7 +95,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
+  <ScreenFrame storefront back bar fluid>
     <p v-if="error" class="error">{{ error }}</p>
     <p v-if="message" class="ok">{{ message }}</p>
     <template v-if="!businesses.length">
@@ -110,9 +110,9 @@ onMounted(async () => {
         <p>Gestiona las categorías y productos de tu negocio</p>
       </header>
       <p v-if="!section.categories.length" class="hint">Este rubro todavía no tiene categorías. Las crea el administrador.</p>
-      <template v-else-if="section.singleCategory">
+      <template v-else>
         <template v-for="business in section.businesses" :key="business.id">
-          <template v-if="!business.categoryId">
+          <template v-if="!business.categoryId && section.singleCategory">
             <p class="hint">Elige una categoría para {{ business.commercialName }}. Después solo podrás publicar ítems en esa categoría.</p>
             <article v-for="category in section.categories" :key="category.id" class="offer pick">
               <div class="photo">
@@ -126,51 +126,35 @@ onMounted(async () => {
               </div>
             </article>
           </template>
-          <article v-else class="offer">
-            <div class="photo">
-              <img v-if="categoryOf(section, business)?.imageUrl" :src="categoryOf(section, business)?.imageUrl || ''" :alt="categoryOf(section, business)?.name" />
-              <span class="badge">Principal</span>
-              <span class="count">{{ countLabel(itemCount(business, business.categoryId)) }}</span>
-            </div>
-            <div class="body">
-              <h3>{{ categoryOf(section, business)?.name }}</h3>
-              <p>Puedes agregar los ítems que necesites en esta categoría.</p>
-              <router-link class="open" :to="{ name: 'category-items', params: { categoryId: business.categoryId } }">Ver ítems</router-link>
-              <router-link class="add" :to="{ name: 'item-form', query: { categoria: business.categoryId } }">Agregar ítem</router-link>
-            </div>
-          </article>
-          <section v-if="takesOrders(section.rubro) && business.categoryId" class="approval">
-            <h3>Configuración de Aprobación de Registro de Pedido</h3>
-            <label class="pay">
-              <input :checked="business.requireOrderPayment" type="checkbox" @change="saveRule(business, ($event.target as HTMLInputElement).checked)" />
-              <span>Se requiere pago del pedido para Registrarlo para su atención</span>
-            </label>
-            <p>Si NO marcas la casilla, los pedidos de tus clientes se registrarán automáticamente para su atención.</p>
-          </section>
+          <template v-else-if="business.categoryId">
+            <article class="offer">
+              <div class="photo">
+                <img v-if="categoryOf(section, business)?.imageUrl" :src="categoryOf(section, business)?.imageUrl || ''" :alt="categoryOf(section, business)?.name" />
+                <span class="badge">Tu categoría</span>
+                <span class="count">{{ countLabel(itemCount(business, business.categoryId)) }}</span>
+              </div>
+              <div class="body">
+                <h3>{{ categoryOf(section, business)?.name }}</h3>
+                <p>Puedes agregar los ítems que necesites en esta categoría.</p>
+                <router-link class="open" :to="{ name: 'category-items', params: { categoryId: business.categoryId } }">Ver ítems</router-link>
+                <router-link class="add" :to="{ name: 'item-form', query: { categoria: business.categoryId } }">Agregar ítem</router-link>
+              </div>
+            </article>
+            <section v-if="takesOrders(section.rubro)" class="approval">
+              <h3>Configuración de Aprobación de Registro de Pedido</h3>
+              <label class="pay">
+                <input :checked="business.requireOrderPayment" type="checkbox" @change="saveRule(business, ($event.target as HTMLInputElement).checked)" />
+                <span>Se requiere pago del pedido para Registrarlo para su atención</span>
+              </label>
+              <p>Si NO marcas la casilla, los pedidos de tus clientes se registrarán automáticamente para su atención.</p>
+            </section>
+          </template>
+          <p v-else class="hint">
+            Elige la categoría de tu negocio en
+            <router-link :to="{ name: 'business-edit', params: { id: business.id } }">Mi negocio</router-link>
+            para ver y agregar ítems.
+          </p>
         </template>
-      </template>
-      <template v-else>
-        <p class="hint">Elige una categoría para ver sus ítems o registrar uno nuevo. Puedes publicar ítems en varias categorías.</p>
-        <article v-for="category in section.categories" :key="category.id" class="offer">
-          <div class="photo">
-            <img v-if="category.imageUrl" :src="category.imageUrl" :alt="category.name" />
-            <span class="count">{{ countLabel(section.businesses.reduce((sum, business) => sum + itemCount(business, category.id), 0)) }}</span>
-          </div>
-          <div class="body">
-            <h3>{{ category.name }}</h3>
-            <p>Puedes agregar los ítems que necesites en esta categoría.</p>
-            <router-link class="open" :to="{ name: 'category-items', params: { categoryId: category.id } }">Ver ítems</router-link>
-            <router-link class="add" :to="{ name: 'item-form', query: { categoria: category.id } }">Agregar ítem</router-link>
-          </div>
-        </article>
-        <section v-for="business in section.businesses" v-show="takesOrders(section.rubro)" :key="`approval-${business.id}`" class="approval">
-          <h3>Configuración de Aprobación de Registro de Pedido</h3>
-          <label class="pay">
-            <input :checked="business.requireOrderPayment" type="checkbox" @change="saveRule(business, ($event.target as HTMLInputElement).checked)" />
-            <span>Se requiere pago del pedido para Registrarlo para su atención</span>
-          </label>
-          <p>Si NO marcas la casilla, los pedidos de tus clientes se registrarán automáticamente para su atención.</p>
-        </section>
       </template>
     </section>
   </ScreenFrame>
@@ -376,5 +360,82 @@ onMounted(async () => {
   color: #5c5e65;
   font-size: 13px;
   line-height: 18px;
+}
+
+@media (min-width: 1024px) {
+  .block {
+    margin-bottom: 28px;
+  }
+
+  .head {
+    margin-bottom: 20px;
+  }
+
+  .head h2 {
+    font-size: 28px;
+    line-height: 34px;
+  }
+
+  .head p,
+  .hint,
+  .offer .body > p {
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .block {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+
+  .head,
+  .block > .hint {
+    grid-column: 1 / -1;
+  }
+
+  .offer {
+    margin-bottom: 0;
+    display: grid;
+    grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.1fr);
+    min-height: 220px;
+  }
+
+  .photo {
+    height: 100%;
+    min-height: 220px;
+  }
+
+  .body {
+    padding: 22px 24px;
+    justify-content: center;
+  }
+
+  .body h3 {
+    font-size: 22px;
+    line-height: 28px;
+  }
+
+  .body .open,
+  .body .add {
+    max-width: 280px;
+  }
+
+  .approval {
+    margin-bottom: 0;
+    padding: 22px 24px;
+  }
+
+  .approval h3 {
+    font-size: 18px;
+    line-height: 24px;
+  }
+
+  .pay span,
+  .approval p {
+    font-size: 14px;
+    line-height: 20px;
+  }
 }
 </style>

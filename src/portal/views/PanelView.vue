@@ -90,6 +90,7 @@ const empresarioLinks = computed(() => {
   }
   if (canSummary.value) links.push({ name: 'day-summary', label: 'Resumen del día' })
   if (agendaEnabled.value) links.push({ name: 'agenda', label: 'Agenda' })
+  links.push({ name: 'account', label: 'Mis Compras' })
   return links
 })
 
@@ -156,7 +157,7 @@ function logout() {
 </script>
 
 <template>
-  <ScreenFrame storefront bar>
+  <ScreenFrame storefront bar fluid>
     <header class="panel-title">
       <h2>Panel de Administración</h2>
       <p v-if="auth.userType === 'EMPRESARIO'">Empresario</p>
@@ -470,5 +471,102 @@ function logout() {
 .ghost {
   background: #cbd5e1;
   color: #334155;
+}
+
+@media (min-width: 1024px) {
+  .panel-title {
+    margin-bottom: 20px;
+  }
+
+  .panel-title h2 {
+    font-size: 28px;
+    line-height: 34px;
+  }
+
+  .panel-title p {
+    font-size: 13px;
+  }
+
+  .owner {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  .profile,
+  .plan {
+    min-height: 100%;
+  }
+
+  .profile {
+    padding: 28px 24px;
+  }
+
+  .profile h3 {
+    font-size: 24px;
+    line-height: 30px;
+  }
+
+  .profile p {
+    font-size: 15px;
+  }
+
+  .plan {
+    padding: 20px 22px;
+  }
+
+  .plan strong {
+    font-size: 11px;
+  }
+
+  .plan p {
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  .menu {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .menu a {
+    min-height: 56px;
+    padding: 0 18px;
+    font-size: 16px;
+  }
+
+  .owner > .save,
+  .owner > .ghost {
+    margin-top: 4px;
+  }
+
+  .admin {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  .session {
+    grid-column: 1 / -1;
+    font-size: 13px;
+  }
+
+  .card {
+    padding: 20px;
+  }
+
+  .card a {
+    font-size: 15px;
+    padding: 14px 4px;
+  }
+
+  .admin > .ghost,
+  .admin > .save {
+    margin-top: 0;
+  }
 }
 </style>

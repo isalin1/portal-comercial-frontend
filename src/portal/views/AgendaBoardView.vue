@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import ScreenFrame from '../components/ScreenFrame.vue'
 import { apiError, http } from '../api'
+import { openWhatsAppChat } from '../whatsapp'
 
 interface Notice {
   id: number
@@ -220,7 +221,13 @@ async function pay(row: Appointment) {
         <p class="muted">{{ row.clientPhone }} · DNI {{ row.clientDni }}</p>
         <p class="muted">{{ row.clientAddress }}</p>
         <div class="stack">
-          <a v-for="notice in latestNotices(row.notices)" :key="notice.id" class="wa-btn" :href="notice.whatsappUrl">
+          <a
+            v-for="notice in latestNotices(row.notices)"
+            :key="notice.id"
+            class="wa-btn"
+            :href="notice.whatsappUrl"
+            @click.prevent="openWhatsAppChat(notice.whatsappUrl)"
+          >
             {{ notice.target === 'CLIENTE' ? 'Avisar al cliente' : 'Avisar al profesional' }}
           </a>
           <template v-if="row.status !== 'ANULADA'">

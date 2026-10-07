@@ -31,10 +31,11 @@ const form = ref({
   pointSaleId: 0,
   categoryId: 0,
   isActive: true,
-  kind: 'CARTA' as 'CARTA' | 'MENU',
+  kind: 'CARTA' as 'CARTA' | 'MENU' | 'OFERTA_DIA',
   menuPart: '' as '' | 'ENTRADA' | 'SEGUNDO' | 'REFRESCO',
   menuOfferId: 0,
   menuOfferIds: [] as number[],
+  compareAtPrice: null as number | null,
   descriptions: [{ id: undefined as number | undefined, description: '', price: 0, unitId: 0 }],
 })
 
@@ -74,6 +75,7 @@ onMounted(async () => {
   else if (!form.value.categoryId && categories.value[0]) form.value.categoryId = categories.value[0].id
   if (!editing && route.query.tipo === 'menu') form.value.kind = 'MENU'
   if (!editing && route.query.tipo === 'carta') form.value.kind = 'CARTA'
+  if (!editing && route.query.tipo === 'oferta') form.value.kind = 'OFERTA_DIA'
   if (!editing) return
   const item = (await http.get<Item>(`/items/${route.params.id}`)).data
   form.value = {
@@ -85,6 +87,7 @@ onMounted(async () => {
     menuPart: item.menuPart || '',
     menuOfferId: item.menuOfferId || item.menuOfferIds?.[0] || 0,
     menuOfferIds: item.menuOfferIds?.length ? [...item.menuOfferIds] : item.menuOfferId ? [item.menuOfferId] : [],
+    compareAtPrice: item.compareAtPrice != null ? Number(item.compareAtPrice) : null,
     descriptions: item.descriptions.length
       ? item.descriptions.map((line) => ({
           id: line.id,
@@ -106,20 +109,27 @@ const selectedBusiness = computed(() => {
 })
 const lockedCategoryId = computed(() => {
   const business = selectedBusiness.value
-  if (auth.userType !== 'EMPRESARIO' || !/profesional|alimento|comercio|servicio/i.test(business?.rubro?.name || '')) return 0
-  return business?.categoryId || -1
+  if (auth.userType !== 'EMPRESARIO') return 0
+  if (business?.categoryId) return business.categoryId
+  return /profesional|alimento|comercio|servicio/i.test(business?.rubro?.name || '') ? -1 : 0
 })
 const selectedCategory = computed(() => categories.value.find((category) => category.id === form.value.categoryId))
 const menuCategory = computed(() => /comida criolla|men[uú]/i.test(selectedCategory.value?.name || ''))
 const plateChip = computed(() => {
-  const kind = form.value.kind === 'MENU' ? 'Parte del menú' : 'Platos a la carta'
+  const kind =
+    form.value.kind === 'MENU'
+      ? 'Parte del menú'
+      : form.value.kind === 'OFERTA_DIA'
+        ? 'Oferta del día'
+        : 'Producto o servicio'
   return selectedCategory.value ? `${selectedCategory.value.name} · ${kind}` : kind
 })
+const pricedKind = computed(() => form.value.kind !== 'MENU')
+const isDailyOffer = computed(() => form.value.kind === 'OFERTA_DIA')
 const submitLabel = computed(() => {
   if (loading.value) return 'Guardando…'
   if (editing) return 'Actualizar ítem'
-  if (form.value.kind === 'MENU') return 'Registrar plato para menú del día'
-  return 'Registrar plato a la carta'
+  return 'Registrar'
 })
 const visibleCategories = computed(() => {
   if (!lockedCategoryId.value || lockedCategoryId.value < 0) return categories.value
@@ -204,13 +214,28 @@ async function submit() {
     error.value = 'El segundo pertenece a un solo tipo de menú'
     return
   }
+  if (pricedKind.value) {
+    const incomplete = form.value.descriptions.some((line) => {
+      const hasDesc = Boolean(line.description.trim())
+      const hasPriceOrUnit = line.unitId || line.price != null
+      return hasPriceOrUnit && !hasDesc
+    })
+    if (incomplete || !form.value.descriptions.some((line) => line.description.trim())) {
+      error.value = 'Completa la descripción para terminar el registro'
+      return
+    }
+  }
   const descriptions = form.value.descriptions
     .filter((line) => line.description.trim())
     .map((line) => (menuPlate
-      ? { id: line.id, description: line.description, price: null, unitId: null }
-      : { id: line.id, description: line.description, price: line.price, unitId: line.unitId }))
-  if (!menuPlate && descriptions.some((line) => !line.unitId || line.price == null || Number(line.price) < 0)) {
+      ? { id: line.id, description: line.description.trim(), price: null, unitId: null }
+      : { id: line.id, description: line.description.trim(), price: line.price, unitId: line.unitId }))
+  if (pricedKind.value && descriptions.some((line) => !line.unitId || line.price == null || Number(line.price) < 0)) {
     error.value = 'El precio puede ser cero y cada descripción debe tener unidad'
+    return
+  }
+  if (isDailyOffer.value && form.value.compareAtPrice != null && Number(form.value.compareAtPrice) < 0) {
+    error.value = 'El precio de referencia no puede ser menor que cero'
     return
   }
   loading.value = true
@@ -225,6 +250,9 @@ async function submit() {
       body.append('kind', form.value.kind)
       if (form.value.menuPart) body.append('menuPart', form.value.menuPart)
       if (chosenOffers.length) body.append('menuOfferIds', chosenOffers.join(','))
+      if (isDailyOffer.value && form.value.compareAtPrice != null) {
+        body.append('compareAtPrice', String(form.value.compareAtPrice))
+      }
       body.append('descriptions', JSON.stringify(descriptions))
       body.append('image', imageFile.value)
       if (editing) await http.patch(`/items/${route.params.id}`, body)
@@ -236,6 +264,7 @@ async function submit() {
         descriptions,
         menuPart: form.value.menuPart || null,
         menuOfferIds: chosenOffers,
+        compareAtPrice: isDailyOffer.value ? form.value.compareAtPrice : null,
         removeImage: removeImage.value,
       }
       if (editing) await http.patch(`/items/${route.params.id}`, payload)
@@ -282,8 +311,8 @@ async function submit() {
         </div>
       </div>
       <label class="line">
-        <span>Nombre del plato</span>
-        <input v-model="form.name" required placeholder="Ej. Lomo Saltado tradicional" />
+        <span>Nombre de Producto o Servicio</span>
+        <input v-model="form.name" required placeholder="Ej. Corte de cabello, Lomo saltado, Consulta" />
       </label>
       <label class="line">
         <span>Punto de venta</span>
@@ -303,12 +332,14 @@ async function submit() {
         <p v-else-if="visibleCategories.length > 1" class="hint">Puedes registrar ítems en cualquiera de estas categorías.</p>
         <p v-else-if="!visibleCategories.length" class="hint">El administrador todavía no registró categorías en el rubro de tu negocio.</p>
       </label>
-      <label v-if="menuCategory" class="line">
-        <span>Tipo de plato</span>
+      <label class="line">
+        <span>Tipo</span>
         <select v-model="form.kind">
-          <option value="CARTA">Plato a la carta</option>
-          <option value="MENU">Parte del menú</option>
+          <option value="CARTA">Producto o servicio</option>
+          <option v-if="menuCategory" value="MENU">Parte del menú</option>
+          <option value="OFERTA_DIA">Oferta del día</option>
         </select>
+        <p v-if="isDailyOffer" class="hint">La oferta solo aparece en el inicio del rubro cuando la autorizas en Disponibilidad del día.</p>
       </label>
       <label v-if="menuCategory && form.kind === 'MENU'" class="line">
         <span>Parte del menú</span>
@@ -336,6 +367,11 @@ async function submit() {
         <p class="hint">Una entrada o un refresco puede estar en varios menús.</p>
         <p v-if="!offers.length" class="hint">Primero registra el tipo de menú y su precio en Productos/Servicios.</p>
       </div>
+      <label v-if="isDailyOffer" class="line">
+        <span>Precio de referencia (opcional)</span>
+        <input v-model.number="form.compareAtPrice" type="number" min="0" step="0.01" placeholder="Precio habitual antes de la oferta" />
+        <p class="hint">Si lo indicas, el cliente verá el descuento en el carrusel de ofertas del día.</p>
+      </label>
       <div class="line">
         <div class="status">
           <span>Estado</span>
@@ -348,26 +384,30 @@ async function submit() {
       </div>
       <div class="variants">
         <header>
-          <strong>{{ menuCategory && form.kind === 'MENU' ? 'Descripciones' : 'Descripciones y precios' }}</strong>
+          <strong>{{ menuCategory && form.kind === 'MENU' ? 'Descripciones' : isDailyOffer ? 'Características y precio de campaña' : 'Descripciones y precios' }}</strong>
           <span>Variante principal</span>
         </header>
         <div v-for="(line, index) in form.descriptions" :key="index" class="grid">
           <label>
-            <span>Descripción</span>
-            <input v-model="line.description" placeholder="Carne, papas y arroz" />
+            <span>{{ isDailyOffer ? 'Característica / detalle' : 'Descripción' }}</span>
+            <input
+              v-model="line.description"
+              :placeholder="isDailyOffer ? 'Ej. Lomo saltado + chicha 1L' : 'Carne, papas y arroz'"
+              :required="pricedKind"
+            />
           </label>
-          <label v-if="!(menuCategory && form.kind === 'MENU')">
-            <span>Precio (S/)</span>
+          <label v-if="pricedKind">
+            <span>{{ isDailyOffer ? 'Precio oferta (S/)' : 'Precio (S/)' }}</span>
             <input v-model.number="line.price" type="number" min="0" step="0.01" />
           </label>
-          <label v-if="!(menuCategory && form.kind === 'MENU')">
+          <label v-if="pricedKind">
             <span>Unidad</span>
             <select v-model.number="line.unitId">
               <option v-for="unit in units" :key="unit.id" :value="unit.id">{{ unit.name }}</option>
             </select>
           </label>
         </div>
-        <p v-if="!(menuCategory && form.kind === 'MENU') && !units.length" class="hint">El administrador todavía no registró unidades.</p>
+        <p v-if="pricedKind && !units.length" class="hint">El administrador todavía no registró unidades.</p>
         <button class="more" type="button" @click="addLine">+ Agregar otra descripción / variante</button>
       </div>
       <button class="save" type="submit" :disabled="loading">{{ submitLabel }}</button>

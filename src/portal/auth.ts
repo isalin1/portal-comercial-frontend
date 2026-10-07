@@ -13,7 +13,21 @@ function readUser(): AuthUser | null {
   }
 }
 
-let pendingAcceptance: { email: string; password: string; whatsappUrl?: string } | null = null
+type PendingAcceptance = { email: string; password: string; whatsappUrl?: string }
+
+const PENDING_KEY = 'portal_pending_acceptance'
+
+function readPending(): PendingAcceptance | null {
+  const raw = sessionStorage.getItem(PENDING_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as PendingAcceptance
+  } catch {
+    return null
+  }
+}
+
+let pendingAcceptance: PendingAcceptance | null = readPending()
 
 export function needsTerms(user: AuthUser | null | undefined) {
   if (!user || (user.userType !== 'CLIENTE' && user.userType !== 'EMPRESARIO')) return false
@@ -33,16 +47,18 @@ export const usePortalAuth = defineStore('portalAuth', () => {
   const userType = computed(() => user.value?.userType)
   const mustAcceptTerms = computed(() => isAuthenticated.value && needsTerms(user.value))
 
-  function holdAcceptance(value: { email: string; password: string; whatsappUrl?: string }) {
+  function holdAcceptance(value: PendingAcceptance) {
     pendingAcceptance = value
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify(value))
   }
 
   function peekAcceptance() {
-    return pendingAcceptance
+    return pendingAcceptance || readPending()
   }
 
   function clearAcceptance() {
     pendingAcceptance = null
+    sessionStorage.removeItem(PENDING_KEY)
   }
 
   function persist(nextToken: string, nextUser: AuthUser) {
@@ -94,9 +110,13 @@ export const usePortalAuth = defineStore('portalAuth', () => {
     password: string
     userType: UserType
     plan?: string
+    confirmUpgrade?: boolean
   }) {
-    const { data } = await http.post<{ message: string }>('/auth/register', payload)
-    return data.message
+    const { data } = await http.post<{ message: string; upgradedFromClient?: boolean; becameEmpresario?: boolean }>(
+      '/auth/register',
+      payload,
+    )
+    return data
   }
 
   function homeFor(type?: UserType) {

@@ -43,31 +43,33 @@ onMounted(async () => {
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
+  <ScreenFrame storefront back bar fluid>
     <header class="head">
       <h2>Auditoría de Publicaciones</h2>
       <p>Revisión y aprobación de modificaciones solicitadas por los comercios afiliados</p>
     </header>
     <p v-if="error" class="error">{{ error }}</p>
-    <section v-else>
+    <section v-else class="board">
       <header class="band">
         <h3><i />Solicitudes pendientes</h3>
         <span v-if="rows.length">{{ pendingLabel }}</span>
       </header>
-      <router-link v-for="row in rows" :key="row.businessId" class="request" :to="{ name: 'audit-detail', params: { id: row.businessId } }">
-        <div class="top">
-          <div>
-            <p class="meta"><b>{{ row.rubroName }}</b><em>·</em>{{ row.categoryName }}</p>
-            <h4>{{ row.commercialName }}</h4>
+      <div v-if="rows.length" class="list">
+        <router-link v-for="row in rows" :key="row.businessId" class="request" :to="{ name: 'audit-detail', params: { id: row.businessId } }">
+          <div class="top">
+            <div>
+              <p class="meta"><b>{{ row.rubroName }}</b><em>·</em>{{ row.categoryName }}</p>
+              <h4>{{ row.commercialName }}</h4>
+            </div>
+            <span class="state">Pendiente</span>
           </div>
-          <span class="state">Pendiente</span>
-        </div>
-        <div class="note">
-          <p>{{ summary(row) }}</p>
-          <small>{{ when(row.oldestAt) }}</small>
-        </div>
-        <p class="go">Revisar modificación</p>
-      </router-link>
+          <div class="note">
+            <p>{{ summary(row) }}</p>
+            <small>{{ when(row.oldestAt) }}</small>
+          </div>
+          <p class="go">Revisar modificación</p>
+        </router-link>
+      </div>
       <div class="done">
         <p>{{ rows.length ? 'No hay más publicaciones pendientes' : 'No hay publicaciones pendientes' }}</p>
         <small v-if="rows.length">Todas las demás solicitudes han sido procesadas.</small>
@@ -140,5 +142,77 @@ onMounted(async () => {
 .done small { display: block; margin-top: 4px; color: #94a3b8; font-size: 11px; }
 @keyframes pulse {
   50% { opacity: 0.35; }
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  .head {
+    margin-bottom: 24px;
+  }
+
+  .head h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .head p {
+    max-width: 520px;
+    margin-top: 10px;
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .band {
+    margin-bottom: 16px;
+  }
+
+  .band h3 {
+    font-size: 13px;
+  }
+
+  .list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 8px;
+  }
+
+  .request {
+    margin-bottom: 0;
+    padding: 18px 20px;
+    height: 100%;
+  }
+
+  .request h4 {
+    font-size: 18px;
+  }
+
+  .note p {
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  .note small,
+  .go {
+    font-size: 12px;
+  }
+
+  .done {
+    max-width: 560px;
+    margin: 16px auto 0;
+    padding: 22px 24px;
+  }
+
+  .done p {
+    font-size: 14px;
+  }
+
+  .done small {
+    font-size: 12px;
+  }
 }
 </style>

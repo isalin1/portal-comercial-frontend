@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import ScreenFrame from '../components/ScreenFrame.vue'
 import { apiError, http } from '../api'
 import type { Business } from '../types'
+import { whatsappChatUrl, openWhatsAppChat } from '../whatsapp'
 
 type ShopClient = {
   id: number
@@ -50,11 +51,7 @@ function initial(value: string) {
 }
 
 function whatsapp(value: string) {
-  let digits = value.replace(/\D/g, '')
-  if (digits.startsWith('00')) digits = digits.slice(2)
-  if (digits.length === 9) digits = `51${digits}`
-  if (!digits) return ''
-  return `https://web.whatsapp.com/send?phone=${digits}`
+  return whatsappChatUrl(value)
 }
 
 function toggleFilter() {
@@ -111,14 +108,14 @@ watch(businessId, async () => {
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
+  <ScreenFrame storefront back bar fluid>
     <header class="head">
       <h2>Clientes</h2>
     </header>
     <p v-if="error" class="error">{{ error }}</p>
     <p v-if="message" class="ok">{{ message }}</p>
 
-    <label class="line">
+    <label class="line pick">
       <span>Negocio</span>
       <select v-model.number="businessId">
         <option v-for="business in businesses" :key="business.id" :value="business.id">{{ business.commercialName }}</option>
@@ -130,14 +127,16 @@ watch(businessId, async () => {
         <h3>Registrar cliente</h3>
         <span>Nuevo</span>
       </header>
-      <label class="line">
-        <span>Nombre</span>
-        <input v-model="name" placeholder="Ej. Carlos Mendoza" required />
-      </label>
-      <label class="line">
-        <span>Celular</span>
-        <input v-model="phone" type="tel" placeholder="Ej. 999888777" required />
-      </label>
+      <div class="pair">
+        <label class="line">
+          <span>Nombre</span>
+          <input v-model="name" placeholder="Ej. Carlos Mendoza" required />
+        </label>
+        <label class="line">
+          <span>Celular</span>
+          <input v-model="phone" type="tel" placeholder="Ej. 999888777" required />
+        </label>
+      </div>
       <label class="line">
         <span class="split">Dirección <em>(opcional)</em></span>
         <input v-model="address" placeholder="Calle, número, urbanización o referencia" />
@@ -154,36 +153,38 @@ watch(businessId, async () => {
       </div>
       <button type="button" :class="{ on: filtering }" @click="toggleFilter">Filtrar</button>
     </header>
-    <label v-if="filtering" class="line">
+    <label v-if="filtering" class="line find">
       <span>Buscar</span>
       <input v-model="query" placeholder="Nombre o celular" />
     </label>
     <p v-if="!clients.length" class="hint">Todavía no hay clientes en este negocio.</p>
     <p v-else-if="!visible.length" class="hint">No hay clientes para este filtro.</p>
-    <article v-for="client in visible" :key="client.id" class="person">
-      <header>
-        <span class="mark">{{ initial(client.name) }}</span>
-        <div>
-          <strong>{{ client.name }}</strong>
-          <small>{{ client.phone }}</small>
+    <section v-else class="list">
+      <article v-for="client in visible" :key="client.id" class="person">
+        <header>
+          <span class="mark">{{ initial(client.name) }}</span>
+          <div>
+            <strong>{{ client.name }}</strong>
+            <small>{{ client.phone }}</small>
+          </div>
+          <a class="call" :href="`tel:${client.phone}`" aria-label="Llamar">Llamar</a>
+          <a v-if="whatsapp(client.phone)" class="chat" :href="whatsapp(client.phone)" aria-label="WhatsApp" @click.prevent="openWhatsAppChat(client.phone)">WhatsApp</a>
+        </header>
+        <div class="facts">
+          <p :class="{ empty: !client.address }">{{ client.address || 'Sin dirección' }}</p>
+          <dl>
+            <div>
+              <dt>Días con compra</dt>
+              <dd>{{ client.purchaseDays }}</dd>
+            </div>
+            <div>
+              <dt>Última compra</dt>
+              <dd>{{ lastLabel(client.lastPurchase) }}</dd>
+            </div>
+          </dl>
         </div>
-        <a class="call" :href="`tel:${client.phone}`" aria-label="Llamar">Llamar</a>
-        <a v-if="whatsapp(client.phone)" class="chat" :href="whatsapp(client.phone)" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp">WhatsApp</a>
-      </header>
-      <div class="facts">
-        <p :class="{ empty: !client.address }">{{ client.address || 'Sin dirección' }}</p>
-        <dl>
-          <div>
-            <dt>Días con compra</dt>
-            <dd>{{ client.purchaseDays }}</dd>
-          </div>
-          <div>
-            <dt>Última compra</dt>
-            <dd>{{ lastLabel(client.lastPurchase) }}</dd>
-          </div>
-        </dl>
-      </div>
-    </article>
+      </article>
+    </section>
   </ScreenFrame>
 </template>
 
@@ -462,5 +463,101 @@ watch(businessId, async () => {
 .chat::before {
   content: 'W';
   color: #fff;
+}
+
+.pair {
+  display: flex;
+  flex-direction: column;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  .head {
+    margin-bottom: 20px;
+  }
+
+  .head h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .pick {
+    max-width: 420px;
+    margin-bottom: 16px;
+  }
+
+  .sheet {
+    max-width: 720px;
+    padding: 20px 22px;
+    margin-bottom: 20px;
+  }
+
+  .sheet header {
+    margin-bottom: 16px;
+  }
+
+  .sheet h3 {
+    font-size: 14px;
+  }
+
+  .pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+
+  .pair .line {
+    margin-bottom: 12px;
+  }
+
+  .save {
+    max-width: 280px;
+  }
+
+  .band {
+    margin-bottom: 14px;
+  }
+
+  .band h3 {
+    font-size: 14px;
+  }
+
+  .find {
+    max-width: 420px;
+    margin-bottom: 14px;
+  }
+
+  .hint {
+    font-size: 14px;
+  }
+
+  .list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .person {
+    margin-bottom: 0;
+    padding: 18px 20px;
+    height: 100%;
+  }
+
+  .person strong {
+    font-size: 16px;
+  }
+
+  .person small,
+  .facts p {
+    font-size: 13px;
+  }
+
+  .facts dd {
+    font-size: 14px;
+  }
 }
 </style>

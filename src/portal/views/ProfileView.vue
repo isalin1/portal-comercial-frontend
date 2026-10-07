@@ -77,17 +77,21 @@ async function save() {
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
+  <ScreenFrame storefront back bar fluid>
     <header class="head">
       <h2>Mis datos</h2>
       <p>Actualiza tu información personal de contacto y acceso</p>
     </header>
     <form class="sheet" @submit.prevent="save">
       <p v-if="error" class="error">{{ error }}</p>
-      <label class="field"><span>Nombres</span><input v-model="form.firstName" required placeholder="Ingresa tus nombres" /></label>
-      <label class="field"><span>Apellidos</span><input v-model="form.lastName" required placeholder="Ingresa tus apellidos" /></label>
-      <label class="field"><span>Celular</span><input v-model="form.phone" required type="tel" inputmode="numeric" placeholder="Número de celular" /></label>
-      <label class="field"><span>Email</span><input v-model="form.email" type="email" required placeholder="tu@correo.com" /></label>
+      <div class="pair">
+        <label class="field"><span>Nombres</span><input v-model="form.firstName" required placeholder="Ingresa tus nombres" /></label>
+        <label class="field"><span>Apellidos</span><input v-model="form.lastName" required placeholder="Ingresa tus apellidos" /></label>
+      </div>
+      <div class="pair">
+        <label class="field"><span>Celular</span><input v-model="form.phone" required type="tel" inputmode="numeric" placeholder="Número de celular" /></label>
+        <label class="field"><span>Email</span><input v-model="form.email" type="email" required placeholder="tu@correo.com" /></label>
+      </div>
       <label class="field secret">
         <span>Nueva contraseña</span>
         <input
@@ -166,5 +170,64 @@ async function save() {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.pair {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  .head {
+    margin-bottom: 24px;
+  }
+
+  .head h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .head p {
+    max-width: 420px;
+    margin: 8px auto 0;
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .sheet {
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  .pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+
+  .pair .field {
+    margin-bottom: 14px;
+  }
+
+  .sheet .field span {
+    font-size: 13px;
+  }
+
+  .sheet .field input {
+    min-height: 48px;
+    font-size: 15px;
+    border-radius: var(--radius-control);
+  }
+
+  .secret button {
+    bottom: 12px;
+    font-size: 13px;
+  }
+
+  .sheet .btn {
+    max-width: 320px;
+    margin: 20px auto 0;
+    display: block;
+  }
 }
 </style>

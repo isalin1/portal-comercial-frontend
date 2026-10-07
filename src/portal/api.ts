@@ -16,10 +16,21 @@ http.interceptors.request.use((config) => {
 })
 
 export function apiError(error: unknown): string {
-  const data = (error as { response?: { data?: { message?: string | string[] } } })
+  const data = (error as { response?: { data?: { message?: string | string[] | { code?: string; message?: string }; code?: string } } })
     ?.response?.data
   const message = data?.message
   if (Array.isArray(message)) return message.join('. ')
+  if (message && typeof message === 'object') return message.message || 'No se pudo completar la operación'
   if (typeof message === 'string') return message
   return 'No se pudo completar la operación'
+}
+
+export function apiErrorCode(error: unknown): string {
+  const data = (error as { response?: { data?: { message?: string | string[] | { code?: string; message?: string }; code?: string } } })
+    ?.response?.data
+  if (!data) return ''
+  if (typeof data.code === 'string' && data.code) return data.code
+  const message = data.message
+  if (message && typeof message === 'object' && !Array.isArray(message)) return message.code || ''
+  return ''
 }

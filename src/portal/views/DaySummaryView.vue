@@ -16,13 +16,16 @@ type SummaryOrder = {
 }
 type Summary = {
   date: string
-  delivered: number
-  deliveredTotal: number
+  orderCount: number
+  orderTotal: number
   collected: number
-  deliveredOrders: SummaryOrder[]
+  dayOrders: SummaryOrder[]
   pending: SummaryOrder[]
+  delivered: number
+  deliveredOrders: SummaryOrder[]
+  deliveredTotal?: number
 }
-type Group = 'entregados' | 'valor' | 'cobrado' | 'pendientes'
+type Group = 'cobranza' | 'pendientes' | 'entregados'
 
 const businesses = ref<Business[]>([])
 const businessId = ref(0)
@@ -30,11 +33,12 @@ const date = ref(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lim
 const summary = ref<Summary | null>(null)
 const openGroup = ref<Group | null>(null)
 const payAmount = ref<Record<number, number>>({})
+const payError = ref<Record<number, string>>({})
 const error = ref('')
 const message = ref('')
 
 function money(value: number) {
-  return `S/ ${value.toFixed(2)}`
+  return `S/ ${Number(value || 0).toFixed(2)}`
 }
 
 function toggle(group: Group) {
@@ -45,17 +49,27 @@ function dayLabel(value: string) {
   return new Date(`${value}T12:00:00`).toLocaleDateString('es-PE')
 }
 
+const dayOrders = computed(() => summary.value?.dayOrders || [])
+const pendingOrders = computed(() => summary.value?.pending || [])
+const deliveredOrders = computed(() => summary.value?.deliveredOrders || [])
+
 const groupOrders = computed(() => {
-  if (!summary.value || !openGroup.value) return []
-  if (openGroup.value === 'pendientes') return summary.value.pending
-  return summary.value.deliveredOrders
+  if (!openGroup.value) return []
+  if (openGroup.value === 'pendientes') return pendingOrders.value
+  if (openGroup.value === 'entregados') return deliveredOrders.value
+  return dayOrders.value
 })
 
 const groupTitle = computed(() => {
-  if (openGroup.value === 'valor') return 'Pedidos que forman el valor'
-  if (openGroup.value === 'cobrado') return 'Pedidos que forman el cobro'
-  if (openGroup.value === 'pendientes') return 'Pedidos con saldo'
-  return 'Pedidos entregados'
+  if (openGroup.value === 'pendientes') return 'Pedidos con saldo pendiente'
+  if (openGroup.value === 'entregados') return 'Pedidos entregados'
+  return 'Pedidos y cobranza del día'
+})
+
+const emptyMessage = computed(() => {
+  if (openGroup.value === 'pendientes') return 'No hay pedidos con saldo pendiente en este día.'
+  if (openGroup.value === 'entregados') return 'No hay pedidos entregados en este día.'
+  return 'No hay pedidos aprobados en este día.'
 })
 
 async function loadBusinesses() {
@@ -64,23 +78,46 @@ async function loadBusinesses() {
   if (!businessId.value && businesses.value[0]) businessId.value = businesses.value[0].id
 }
 
-async function pay(order: Pending) {
+async function pay(order: SummaryOrder) {
   error.value = ''
   message.value = ''
+  payError.value[order.id] = ''
+  const amount = Number(payAmount.value[order.id])
+  const balance = Number(order.balance)
+  if (!amount || amount <= 0) {
+    payError.value[order.id] = 'El pago debe ser mayor a cero'
+    return
+  }
+  if (Math.round(amount * 100) > Math.round(balance * 100)) {
+    payError.value[order.id] = 'No es posible registrar un pago mayor al saldo actual del pedido'
+    return
+  }
   try {
-    await http.post(`/pedidos/${order.id}/pagos`, { amount: payAmount.value[order.id] })
+    await http.post(`/pedidos/${order.id}/pagos`, { amount })
     payAmount.value[order.id] = 0
+    payError.value[order.id] = ''
     message.value = 'Pago registrado'
     await loadSummary()
   } catch (err) {
-    error.value = apiError(err)
+    payError.value[order.id] = apiError(err)
   }
 }
 
 async function loadSummary() {
   if (!businessId.value) return
-  const { data } = await http.get<Summary>('/pedidos/resumen', { params: { businessId: businessId.value, date: date.value } })
-  summary.value = data
+  const { data } = await http.get<Summary>('/pedidos/resumen', {
+    params: { businessId: businessId.value, date: date.value },
+  })
+  summary.value = {
+    ...data,
+    dayOrders: data.dayOrders || [],
+    pending: data.pending || [],
+    deliveredOrders: data.deliveredOrders || [],
+    orderCount: data.orderCount ?? data.dayOrders?.length ?? 0,
+    orderTotal: data.orderTotal ?? data.deliveredTotal ?? 0,
+    collected: data.collected ?? 0,
+    delivered: data.delivered ?? data.deliveredOrders?.length ?? 0,
+  }
 }
 
 onMounted(async () => {
@@ -93,6 +130,7 @@ onMounted(async () => {
 })
 
 watch([businessId, date], async () => {
+  openGroup.value = null
   try {
     await loadSummary()
   } catch (err) {
@@ -102,69 +140,84 @@ watch([businessId, date], async () => {
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
+  <ScreenFrame storefront back bar fluid>
     <header class="head">
       <h2>Resumen del día</h2>
     </header>
     <p v-if="error" class="error">{{ error }}</p>
     <p v-if="message" class="ok">{{ message }}</p>
-    <label class="line">
-      <span>Negocio</span>
-      <select v-model.number="businessId">
-        <option v-for="business in businesses" :key="business.id" :value="business.id">{{ business.commercialName }}</option>
-      </select>
-    </label>
-    <label class="line">
-      <span>Día</span>
-      <input v-model="date" type="date" />
-    </label>
-    <section v-if="summary" class="metrics">
+
+    <div class="filters">
+      <label class="line">
+        <span>Fecha</span>
+        <input v-model="date" type="date" />
+      </label>
+      <label class="line">
+        <span>Negocio</span>
+        <select v-model.number="businessId">
+          <option v-for="business in businesses" :key="business.id" :value="business.id">
+            {{ business.commercialName }}
+          </option>
+        </select>
+      </label>
+    </div>
+
+    <nav v-if="summary" class="actions">
+      <button type="button" :class="{ open: openGroup === 'cobranza' }" @click="toggle('cobranza')">
+        Pedidos y cobranza del día
+        <b>{{ summary.orderCount }}</b>
+      </button>
+      <button type="button" :class="{ open: openGroup === 'pendientes' }" @click="toggle('pendientes')">
+        Pedidos con saldo pendiente
+        <b>{{ pendingOrders.length }}</b>
+      </button>
       <button type="button" :class="{ open: openGroup === 'entregados' }" @click="toggle('entregados')">
-        <span class="mark">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
-        </span>
-        <em>Pedidos entregados:</em>
+        Pedidos entregados
         <b>{{ summary.delivered }}</b>
       </button>
-      <button type="button" :class="{ open: openGroup === 'valor' }" @click="toggle('valor')">
-        <span class="mark">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" /></svg>
-        </span>
-        <em>Valor pedidos:</em>
-        <b>{{ money(summary.deliveredTotal) }}</b>
-      </button>
-      <button type="button" class="cash" :class="{ open: openGroup === 'cobrado' }" @click="toggle('cobrado')">
-        <span class="mark">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12m-3-2.8.9.7c1.1.8 3 .8 4.2 0 1.2-.9 1.2-2.3 0-3.2-.6-.4-1.4-.7-2.1-.7-.8 0-1.5-.2-2-.7-1.1-.8-1.1-2.3 0-3.1s2.9-.9 4 0l.4.3M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" /></svg>
-        </span>
-        <em>Valor cobrado:</em>
-        <b>{{ money(summary.collected) }}</b>
-      </button>
+    </nav>
+
+    <section v-if="openGroup === 'cobranza' && summary" class="totals">
+      <div>
+        <span>Valor pedidos</span>
+        <strong>{{ money(summary.orderTotal) }}</strong>
+      </div>
+      <div>
+        <span>Valor cobrado</span>
+        <strong class="cash">{{ money(summary.collected) }}</strong>
+      </div>
+      <div>
+        <span>Saldo del día</span>
+        <strong>{{ money(summary.orderTotal - summary.collected) }}</strong>
+      </div>
     </section>
-    <button class="pending" type="button" :class="{ open: openGroup === 'pendientes' }" @click="toggle('pendientes')">
-      Pedidos no pagados en su totalidad
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
-    </button>
+
     <section v-if="openGroup && summary" class="detail">
       <h3>{{ groupTitle }}</h3>
-      <p v-if="!groupOrders.length" class="empty">{{ openGroup === 'pendientes' ? 'No hay pedidos con saldo pendiente.' : 'No hay pedidos entregados en este día.' }}</p>
+      <p v-if="!groupOrders.length" class="empty">{{ emptyMessage }}</p>
       <article v-for="order in groupOrders" :key="order.id">
         <header>
           <strong>{{ order.clientName }}</strong>
           <span>Pedido {{ order.id }}</span>
         </header>
-        <p class="when">{{ dayLabel(order.date) }}</p>
+        <p class="when">{{ dayLabel(order.date) }} · {{ order.statusLabel }}</p>
         <p v-for="(line, index) in order.lines" :key="index" class="item">{{ line }}</p>
         <p v-if="!order.lines.length" class="item">Sin productos registrados.</p>
-        <p v-if="openGroup === 'entregados'" class="amount">{{ order.statusLabel }} · {{ money(order.total) }}</p>
-        <p v-else-if="openGroup === 'valor'" class="amount">Total {{ money(order.total) }}</p>
-        <p v-else-if="openGroup === 'cobrado'" class="amount paid">Cobrado {{ money(order.paid) }} · pedido {{ money(order.total) }}</p>
-        <template v-else>
-          <p class="amount">Pedido {{ money(order.total) }} · pagado {{ money(order.paid) }} · saldo {{ money(order.balance) }}</p>
+        <p class="amount">
+          Total {{ money(order.total) }} · pagado {{ money(order.paid) }} · saldo {{ money(order.balance) }}
+        </p>
+        <template v-if="openGroup !== 'entregados' && order.balance > 0">
           <div class="pay">
-            <input v-model.number="payAmount[order.id]" type="number" min="0.01" step="0.01" placeholder="0.00" />
+            <input
+              v-model.number="payAmount[order.id]"
+              type="number"
+              min="0.01"
+              step="0.01"
+              placeholder="0.00"
+            />
             <button type="button" @click="pay(order)">Registrar pago</button>
           </div>
+          <p v-if="payError[order.id]" class="error">{{ payError[order.id] }}</p>
         </template>
       </article>
     </section>
@@ -221,102 +274,80 @@ watch([businessId, date], async () => {
   padding-right: 36px;
 }
 
-.metrics {
+.actions {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 14px;
-  padding: 14px;
-  border: 1px solid #e2e8f0;
-  border-radius: var(--radius-card);
-  background: #f8fafc;
 }
 
-.metrics button,
-.pending {
+.actions button {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   width: 100%;
-  min-height: 48px;
-  padding: 8px 10px;
-  border: 1px solid transparent;
+  min-height: 52px;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
   border-radius: var(--radius-control);
-  background: transparent;
-  color: #334155;
+  background: #fff;
+  box-shadow: var(--shadow-soft);
+  color: var(--color-ink);
   font: inherit;
+  font-size: 14px;
+  font-weight: 700;
   text-align: left;
   cursor: pointer;
 }
 
-.metrics button.open,
-.pending.open {
+.actions button.open {
   border-color: #fecdd3;
-  background: #fff;
+  background: #fff5f5;
 }
 
-.mark {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #fff;
+.actions b {
   flex: none;
-}
-
-.mark svg,
-.pending svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.metrics em {
-  flex: 1;
-  font-style: normal;
+  min-width: 28px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #334155;
   font-size: 14px;
+  text-align: center;
+}
+
+.totals {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border-radius: var(--radius-card);
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.totals div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.totals span {
+  color: #64748b;
+  font-size: 13px;
   font-weight: 600;
 }
 
-.metrics b {
-  padding: 2px 8px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #fff;
-  color: var(--color-ink);
+.totals strong {
   font-size: 15px;
+  font-weight: 800;
 }
 
-.metrics .cash .mark {
-  border-color: #a7f3d0;
-  background: #ecfdf5;
+.totals .cash {
   color: #047857;
-}
-
-.metrics .cash b {
-  border-color: #a7f3d0;
-  background: #ecfdf5;
-  color: #047857;
-}
-
-.pending {
-  justify-content: center;
-  margin-bottom: 14px;
-  background: #e2e8f0;
-  color: #334155;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.pending svg {
-  width: 16px;
-  height: 16px;
 }
 
 .detail h3 {
@@ -360,10 +391,6 @@ watch([businessId, date], async () => {
   margin: 8px 0 0;
 }
 
-.amount.paid {
-  color: #047857;
-}
-
 .pay {
   display: flex;
   gap: 8px;
@@ -386,5 +413,140 @@ watch([businessId, date], async () => {
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.error {
+  margin: 8px 0 0;
+  color: var(--color-brand);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ok {
+  margin: 0 0 12px;
+  color: #047857;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.filters {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  .head {
+    margin-bottom: 20px;
+  }
+
+  .head h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .filters {
+    display: grid;
+    grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+    gap: 14px;
+    margin-bottom: 8px;
+    max-width: 720px;
+  }
+
+  .filters .line {
+    margin-bottom: 0;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .actions button {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: space-between;
+    min-height: 96px;
+    padding: 16px 18px;
+    font-size: 15px;
+  }
+
+  .actions b {
+    align-self: flex-end;
+    min-width: 36px;
+    padding: 4px 10px;
+    font-size: 18px;
+  }
+
+  .totals {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    max-width: 720px;
+    margin-bottom: 16px;
+    padding: 18px 20px;
+  }
+
+  .totals div {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .totals span {
+    font-size: 13px;
+  }
+
+  .totals strong {
+    font-size: 20px;
+  }
+
+  .detail h3 {
+    font-size: 18px;
+    margin-bottom: 14px;
+  }
+
+  .detail {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+
+  .detail h3,
+  .detail .empty {
+    grid-column: 1 / -1;
+  }
+
+  .detail article {
+    margin-bottom: 0;
+    padding: 18px 20px;
+  }
+
+  .detail header strong {
+    font-size: 16px;
+  }
+
+  .when,
+  .item,
+  .amount {
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .pay {
+    margin-top: 12px;
+  }
+
+  .pay input {
+    width: 140px;
+    min-height: 48px;
+  }
+
+  .pay button {
+    min-height: 48px;
+    font-size: 14px;
+  }
 }
 </style>

@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import ScreenFrame from '../components/ScreenFrame.vue'
 import { apiError, http } from '../api'
-import { isKgUnit, menuOfferIdsOf, quantityError, type Business, type Item } from '../types'
+import { isKgUnit, menuOfferIdsOf, type Business, type Item } from '../types'
+import { whatsappChatUrl, openWhatsAppChat } from '../whatsapp'
+
+const OPERATOR_ORDER_KEY = 'portal-operator-order'
 
 type Offer = { id: number; name: string; price: string; isActive: boolean }
 type Catalog = { carta: Item[]; menu: Item[]; offers: Offer[] }
-type Dish = { itemId: number; menuPart: string }
 type Order = {
   id: number
   clientName: string
@@ -27,6 +30,7 @@ type Order = {
 
 type ShopClient = { id: number; name: string; phone: string; address: string | null; purchases: number }
 
+const router = useRouter()
 const businesses = ref<Business[]>([])
 const businessId = ref(0)
 const catalog = ref<Catalog>({ carta: [], menu: [], offers: [] })
@@ -42,8 +46,9 @@ const statusButtons = [
   { key: 'ANULADO', label: 'Anulado', next: '', nextLabel: '' },
 ]
 const query = ref('')
+const creating = ref(false)
+const createError = ref('')
 const habitual = ref(false)
-const dishMode = ref<'carta' | 'menu'>('carta')
 const visibleOrders = computed(() => {
   const text = query.value.trim().toLowerCase()
   return orders.value.filter((order) => {
@@ -66,35 +71,19 @@ const fulfillment = ref<'RECOJO' | 'DELIVERY'>('RECOJO')
 const pointId = ref(0)
 const points = computed(() => businesses.value.find((item) => item.id === businessId.value)?.pointSales || [])
 const selectedPoint = computed(() => points.value.find((point) => point.id === pointId.value) || points.value[0])
+const selectedBusiness = computed(() => businesses.value.find((item) => item.id === businessId.value))
 watch(points, (list) => {
   if (!list.some((point) => point.id === pointId.value)) pointId.value = list[0]?.id || 0
   if (fulfillment.value === 'DELIVERY' && !selectedPoint.value?.chargesDelivery) fulfillment.value = 'RECOJO'
 })
-const cartaPick = ref<{ descriptionId: number; quantity: number }>({ descriptionId: 0, quantity: 1 })
-const cartaLines = ref<{ descriptionId: number; quantity: number; unitName: string; label: string; price: number }[]>([])
-const orderPayment = ref(0)
-const menuPick = ref<Record<string, number | null>>({ ENTRADA: null, SEGUNDO: null, REFRESCO: null })
-const menuOfferId = ref(0)
 const payAmount = ref<Record<number, number>>({})
+const payError = ref<Record<number, string>>({})
 const served = ref<Record<number, number>>({})
 const parts = [
   { key: 'ENTRADA', label: 'Entrada' },
   { key: 'SEGUNDO', label: 'Segundo' },
   { key: 'REFRESCO', label: 'Refresco' },
 ]
-
-const cartaOptions = computed(() =>
-  catalog.value.carta.flatMap((item) =>
-    (item.descriptions || [])
-      .filter((line) => line.id && line.price != null)
-      .map((line) => ({
-        id: line.id as number,
-        price: Number(line.price),
-        unitName: line.unit?.name || '',
-        label: `${item.name} · ${line.description} · S/ ${Number(line.price).toFixed(2)}`,
-      })),
-  ),
-)
 
 async function loadBase() {
   const { data } = await http.get<Business[]>('/businesses')
@@ -112,8 +101,6 @@ async function loadShop() {
   catalog.value = catalogRes.data
   orders.value = orderRes.data
   clients.value = clientRes.data
-  if (!menuOfferId.value && catalog.value.offers[0]) menuOfferId.value = catalog.value.offers[0].id
-  if (!cartaPick.value.descriptionId && cartaOptions.value[0]) cartaPick.value.descriptionId = cartaOptions.value[0].id
 }
 
 onMounted(async () => {
@@ -150,6 +137,60 @@ function newClient() {
   clientAddress.value = ''
 }
 
+function openCreate() {
+  creating.value = true
+  error.value = ''
+  createError.value = ''
+  message.value = ''
+}
+
+function cancelCreate() {
+  creating.value = false
+  createError.value = ''
+  newClient()
+  fulfillment.value = 'RECOJO'
+}
+
+function goToStore() {
+  error.value = ''
+  createError.value = ''
+  message.value = ''
+  const point = selectedPoint.value
+  if (!businessId.value || !point?.id) {
+    createError.value = 'Elige el negocio y el punto de venta.'
+    return
+  }
+  if (!clientName.value.trim()) {
+    createError.value = 'Registra el nombre del cliente.'
+    return
+  }
+  if (!clientPhone.value.trim()) {
+    createError.value = 'Registra el celular del cliente.'
+    return
+  }
+  if (fulfillment.value === 'DELIVERY' && !clientAddress.value.trim()) {
+    createError.value = 'El delivery exige una dirección de entrega.'
+    return
+  }
+  sessionStorage.setItem(
+    OPERATOR_ORDER_KEY,
+    JSON.stringify({
+      businessId: businessId.value,
+      pointSaleId: point.id,
+      clientName: clientName.value.trim(),
+      clientPhone: clientPhone.value.trim(),
+      clientAddress: clientAddress.value.trim(),
+      fulfillment: fulfillment.value,
+      requireOrderPayment: Boolean(selectedBusiness.value?.requireOrderPayment),
+    }),
+  )
+  router.push({
+    name: 'business',
+    params: { id: businessId.value },
+    query: { operador: '1', punto: String(point.id) },
+  })
+}
+
 function lineText(order: Order) {
   return order.lines
     .map((line) => {
@@ -162,11 +203,7 @@ function lineText(order: Order) {
 }
 
 function clientWhatsapp(phone?: string) {
-  let digits = (phone || '').replace(/\D/g, '')
-  if (digits.startsWith('00')) digits = digits.slice(2)
-  if (digits.length === 9) digits = `51${digits}`
-  if (!digits) return ''
-  return `https://web.whatsapp.com/send?phone=${digits}`
+  return whatsappChatUrl(phone)
 }
 
 function useClient() {
@@ -209,33 +246,13 @@ function hour(value: string) {
   return new Date(value).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
 }
 
-const pickedUnit = computed(() => cartaOptions.value.find((item) => item.id === cartaPick.value.descriptionId)?.unitName || '')
-
 function unitOfSaved(name: string) {
-  const option = cartaOptions.value.find((item) => item.label.startsWith(`${name} ·`))
-  return option?.unitName || ''
-}
-
-function addCarta() {
-  const option = cartaOptions.value.find((item) => item.id === cartaPick.value.descriptionId)
-  if (!option) return
-  const quantity = Number(cartaPick.value.quantity)
-  const invalid = quantityError(option.unitName, quantity)
-  if (invalid) {
-    error.value = invalid
-    return
+  for (const item of catalog.value.carta) {
+    if (item.name !== name) continue
+    const line = item.descriptions?.find((entry) => entry.unit?.name)
+    if (line?.unit?.name) return line.unit.name
   }
-  error.value = ''
-  const current = cartaLines.value.find((line) => line.descriptionId === option.id)
-  if (current) {
-    const sum = Number(current.quantity) + quantity
-    current.quantity = isKgUnit(option.unitName) ? Math.round(sum * 100) / 100 : sum
-  }
-  else cartaLines.value.push({ descriptionId: option.id, quantity, unitName: option.unitName, label: option.label, price: option.price })
-}
-
-function removeCarta(index: number) {
-  cartaLines.value.splice(index, 1)
+  return ''
 }
 
 const menuEdit = ref<Record<number, { offerId: number; parts: Record<string, number | null> }>>({})
@@ -247,7 +264,10 @@ function editOf(order: Order, line: Order['lines'][number]) {
       const item = catalog.value.menu.find((entry) => entry.menuPart === dish.menuPart && entry.name === dish.name)
       parts[dish.menuPart] = item?.id ?? null
     }
-    menuEdit.value[line.id] = { offerId: catalog.value.offers.find((offer) => offer.name === line.name)?.id || menuOfferId.value, parts }
+    menuEdit.value[line.id] = {
+      offerId: catalog.value.offers.find((offer) => offer.name === line.name)?.id || catalog.value.offers[0]?.id || 0,
+      parts,
+    }
   }
   return menuEdit.value[line.id]
 }
@@ -279,69 +299,6 @@ async function removeSaved(lineId: number) {
   }
 }
 
-function dishes(): Dish[] {
-  return parts
-    .filter((part) => menuPick.value[part.key])
-    .map((part) => ({ itemId: menuPick.value[part.key] as number, menuPart: part.key }))
-}
-
-const requiresPayment = computed(() => businesses.value.find((business) => business.id === businessId.value)?.requireOrderPayment)
-const orderTotal = computed(() => {
-  const carta = cartaLines.value.reduce((sum, line) => sum + line.price * Number(line.quantity), 0)
-  const offer = catalog.value.offers.find((item) => item.id === menuOfferId.value)
-  const menu = dishes().length && offer ? Number(offer.price) : 0
-  const delivery = fulfillment.value === 'DELIVERY' && selectedPoint.value?.chargesDelivery ? Number(selectedPoint.value.deliveryFee || 0) : 0
-  return carta + menu + delivery
-})
-
-async function createOrder(waivePayment = false) {
-  error.value = ''
-  message.value = ''
-  const invalid = cartaLines.value.find((line) => quantityError(line.unitName, Number(line.quantity)))
-  if (invalid) {
-    error.value = quantityError(invalid.unitName, Number(invalid.quantity))
-    return
-  }
-  const lines: Record<string, unknown>[] = cartaLines.value.map((line) => ({
-    kind: 'CARTA',
-    descriptionId: line.descriptionId,
-    quantity: line.quantity,
-  }))
-  const menuDishes = dishes()
-  if (menuDishes.length) lines.push({ kind: 'MENU', menuOfferId: menuOfferId.value, dishes: menuDishes })
-  if (fulfillment.value === 'DELIVERY' && !clientAddress.value.trim()) {
-    error.value = 'El pedido no se registró porque el delivery exige una dirección de entrega.'
-    return
-  }
-  if (requiresPayment.value && !waivePayment && Math.round(Number(orderPayment.value) * 100) < Math.round(orderTotal.value * 100)) {
-    error.value = `El pedido no se registró porque no se cumplió la condición de pago. El total es S/ ${orderTotal.value.toFixed(2)}.`
-    return
-  }
-  try {
-    await http.post('/pedidos', {
-      businessId: businessId.value,
-      clientName: clientName.value,
-      clientPhone: clientPhone.value,
-      clientAddress: clientAddress.value,
-      fulfillment: fulfillment.value,
-      pointSaleId: selectedPoint.value?.id,
-      lines,
-      payment: orderPayment.value,
-      waivePayment,
-    })
-    clientName.value = ''
-    clientPhone.value = ''
-    clientAddress.value = ''
-    pickedClientId.value = 0
-    cartaLines.value = []
-    menuPick.value = { ENTRADA: null, SEGUNDO: null, REFRESCO: null }
-    message.value = 'Pedido registrado'
-    await loadShop()
-  } catch (err) {
-    error.value = apiError(err)
-  }
-}
-
 async function setStatus(order: Order, status: string) {
   error.value = ''
   try {
@@ -364,27 +321,33 @@ async function saveServed(lineId: number) {
 
 async function pay(order: Order) {
   error.value = ''
+  message.value = ''
+  payError.value[order.id] = ''
+  const amount = Number(payAmount.value[order.id])
+  const balance = Number(order.balance)
+  if (!amount || amount <= 0) {
+    payError.value[order.id] = 'El pago debe ser mayor a cero'
+    return
+  }
+  if (Math.round(amount * 100) > Math.round(balance * 100)) {
+    payError.value[order.id] = 'No es posible registrar un pago mayor al saldo actual del pedido'
+    return
+  }
   try {
-    await http.post(`/pedidos/${order.id}/pagos`, { amount: payAmount.value[order.id] })
+    await http.post(`/pedidos/${order.id}/pagos`, { amount })
     payAmount.value[order.id] = 0
+    payError.value[order.id] = ''
     message.value = 'Pago registrado'
     await loadShop()
   } catch (err) {
-    error.value = apiError(err)
+    payError.value[order.id] = apiError(err)
   }
 }
 
-function menuItems(part: string) {
-  return catalog.value.menu.filter((item) => item.menuPart === part && menuOfferIdsOf(item).includes(menuOfferId.value))
-}
-
-watch(menuOfferId, (_next, previous) => {
-  if (previous) menuPick.value = { ENTRADA: null, SEGUNDO: null, REFRESCO: null }
-})
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
+  <ScreenFrame storefront back bar fluid>
     <header class="head">
       <h2>Registro de Pedidos</h2>
     </header>
@@ -404,90 +367,6 @@ watch(menuOfferId, (_next, previous) => {
         </select>
       </label>
     </div>
-
-    <section class="sheet">
-      <h3>Nuevo pedido</h3>
-      <div class="tabs">
-        <button type="button" :class="{ on: !habitual }" @click="newClient">Nuevo cliente</button>
-        <button type="button" :class="{ on: habitual }" @click="habitual = true">Cliente habitual</button>
-      </div>
-      <label v-if="habitual" class="line">
-        <span>Cliente habitual</span>
-        <select v-model.number="pickedClientId" @change="useClient">
-          <option :value="0">Elige un cliente</option>
-          <option v-for="client in clients" :key="client.id" :value="client.id">
-            {{ client.name }} · {{ client.phone }} · {{ client.purchases }} compras
-          </option>
-        </select>
-      </label>
-      <div class="pair">
-        <label class="line">
-          <span>Nombre del cliente</span>
-          <input v-model="clientName" />
-        </label>
-        <label class="line">
-          <span>Celular (WhatsApp)</span>
-          <input v-model="clientPhone" inputmode="numeric" @change="matchClient" />
-        </label>
-      </div>
-      <span class="caption">Modalidad de entrega</span>
-      <div class="modes">
-        <button type="button" :class="{ on: fulfillment === 'RECOJO' }" @click="fulfillment = 'RECOJO'">En local</button>
-        <button v-if="selectedPoint?.chargesDelivery" type="button" :class="{ on: fulfillment === 'DELIVERY' }" @click="fulfillment = 'DELIVERY'">Delivery</button>
-      </div>
-      <label v-if="fulfillment === 'DELIVERY'" class="line">
-        <span>Dirección de entrega</span>
-        <input v-model="clientAddress" placeholder="Dirección donde se entrega el pedido" />
-      </label>
-      <p v-if="fulfillment === 'DELIVERY'" class="hint">Delivery a domicilio S/ {{ Number(selectedPoint?.deliveryFee || 0).toFixed(2) }}</p>
-
-      <div class="tabs">
-        <button type="button" :class="{ on: dishMode === 'carta' }" @click="dishMode = 'carta'">A la carta</button>
-        <button type="button" :class="{ on: dishMode === 'menu' }" @click="dishMode = 'menu'">Menú del día</button>
-      </div>
-      <template v-if="dishMode === 'carta'">
-        <label class="line">
-          <span>Producto</span>
-          <select v-model.number="cartaPick.descriptionId">
-            <option v-for="option in cartaOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
-          </select>
-        </label>
-        <label class="line qty">
-          <span>Cantidad</span>
-          <input v-model.number="cartaPick.quantity" type="number" :min="isKgUnit(pickedUnit) ? 0.01 : 1" :step="isKgUnit(pickedUnit) ? 0.01 : 1" />
-        </label>
-        <p class="hint">{{ isKgUnit(pickedUnit) ? 'Kg: hasta dos decimales (0.50, 0.25, 0.10)' : 'Unidad: solo números enteros' }}</p>
-        <button class="ghost" type="button" @click="addCarta">Agregar</button>
-        <div v-for="(line, index) in cartaLines" :key="index" class="tools">
-          <span>{{ line.label }}</span>
-          <input v-model.number="line.quantity" type="number" :min="isKgUnit(line.unitName) ? 0.01 : 1" :step="isKgUnit(line.unitName) ? 0.01 : 1" />
-          <button type="button" @click="removeCarta(index)">Quitar</button>
-        </div>
-      </template>
-      <template v-else>
-        <label class="line">
-          <span>Tipo de menú</span>
-          <select v-model.number="menuOfferId">
-            <option v-for="offer in catalog.offers" :key="offer.id" :value="offer.id">{{ offer.name }} · S/ {{ Number(offer.price).toFixed(2) }}</option>
-          </select>
-        </label>
-        <label v-for="part in parts" :key="part.key" class="line">
-          <span>{{ part.label }}</span>
-          <select v-model="menuPick[part.key]">
-            <option :value="null">Sin elegir</option>
-            <option v-for="item in menuItems(part.key)" :key="item.id" :value="item.id">{{ item.name }}</option>
-          </select>
-        </label>
-        <p class="hint">Solo se pueden elegir platos del tipo de menú seleccionado.</p>
-      </template>
-      <p v-if="requiresPayment" class="hint">Este negocio exige el pago para registrar el pedido.</p>
-      <label v-if="requiresPayment" class="line">
-        <span>Pago</span>
-        <input v-model.number="orderPayment" type="number" min="0.01" step="0.01" />
-      </label>
-      <button class="save" type="button" @click="createOrder(false)">Registrar pedido · S/ {{ orderTotal.toFixed(2) }}</button>
-      <button v-if="requiresPayment" class="ghost" type="button" @click="createOrder(true)">Registrar este pedido sin pago</button>
-    </section>
 
     <section class="today">
       <header>
@@ -525,13 +404,17 @@ watch(menuOfferId, (_next, previous) => {
           {{ stage.label }} {{ hour(stage.startedAt) }} · {{ clock(stageMinutes(order, index)) }}
         </p>
         <template v-for="line in order.lines" :key="line.id">
-          <div v-if="line.kind === 'CARTA' && order.status !== 'ENTREGADO' && order.status !== 'ANULADO'" class="tools">
-            <span>Atendido</span>
-            <input v-model.number="served[line.id]" type="number" :min="isKgUnit(unitOfSaved(line.name)) ? 0.01 : 1" :step="isKgUnit(unitOfSaved(line.name)) ? 0.01 : 1" :placeholder="String(line.quantityServed)" />
-            <button type="button" @click="saveServed(line.id)">Guardar</button>
-            <button type="button" @click="removeSaved(line.id)">Quitar</button>
+          <div v-if="line.kind === 'CARTA' && order.status !== 'ENTREGADO' && order.status !== 'ANULADO'" class="served-block">
+            <p class="served-name">{{ line.name }}</p>
+            <div class="tools">
+              <span>Atendido</span>
+              <input v-model.number="served[line.id]" type="number" :min="isKgUnit(unitOfSaved(line.name)) ? 0.01 : 1" :step="isKgUnit(unitOfSaved(line.name)) ? 0.01 : 1" :placeholder="String(line.quantityServed)" />
+              <button type="button" @click="saveServed(line.id)">Guardar</button>
+              <button type="button" @click="removeSaved(line.id)">Quitar</button>
+            </div>
           </div>
           <div v-else-if="line.kind === 'MENU' && order.status !== 'ENTREGADO' && order.status !== 'ANULADO'" class="menu-edit">
+            <p class="served-name">{{ line.name }}{{ line.dishes?.length ? ` · ${line.dishes.map((dish) => dish.name).join(' + ')}` : '' }}</p>
             <label class="line">
               <span>Tipo de menú</span>
               <select v-model.number="editOf(order, line).offerId">
@@ -552,16 +435,63 @@ watch(menuOfferId, (_next, previous) => {
           </div>
         </template>
         <p class="hint">Pagado S/ {{ order.paid.toFixed(2) }} · saldo S/ {{ order.balance.toFixed(2) }}</p>
-        <div v-if="order.balance > 0 && order.status !== 'ANULADO'" class="tools">
-          <input v-model.number="payAmount[order.id]" type="number" min="0.01" step="0.01" />
-          <button type="button" @click="pay(order)">Registrar pago</button>
+        <div v-if="order.balance > 0 && order.status !== 'ANULADO'" class="pay-box">
+          <div class="tools">
+            <input v-model.number="payAmount[order.id]" type="number" min="0.01" step="0.01" />
+            <button type="button" @click="pay(order)">Registrar pago</button>
+          </div>
+          <p v-if="payError[order.id]" class="error pay-msg">{{ payError[order.id] }}</p>
         </div>
         <div class="actions">
-          <a v-if="clientWhatsapp(order.clientPhone)" class="wa" :href="clientWhatsapp(order.clientPhone)" target="_blank" rel="noopener">WhatsApp</a>
+          <a v-if="clientWhatsapp(order.clientPhone)" class="wa" :href="clientWhatsapp(order.clientPhone)" @click.prevent="openWhatsAppChat(order.clientPhone)">WhatsApp</a>
           <button v-if="activeGroup?.next" class="save" type="button" @click="setStatus(order, activeGroup.next)">{{ activeGroup.nextLabel }}</button>
           <button v-if="order.status !== 'ENTREGADO' && order.status !== 'ANULADO'" class="ghost" type="button" @click="setStatus(order, 'ANULADO')">Anular</button>
         </div>
       </article>
+    </section>
+
+    <section class="sheet create">
+      <h3>Crear pedidos</h3>
+      <button v-if="!creating" class="save" type="button" @click="openCreate">Crear pedidos</button>
+      <template v-else>
+        <div class="tabs">
+          <button type="button" :class="{ on: !habitual }" @click="newClient">Nuevo cliente</button>
+          <button type="button" :class="{ on: habitual }" @click="habitual = true">Cliente habitual</button>
+        </div>
+        <label v-if="habitual" class="line">
+          <span>Cliente habitual</span>
+          <select v-model.number="pickedClientId" @change="useClient">
+            <option :value="0">Elige un cliente</option>
+            <option v-for="client in clients" :key="client.id" :value="client.id">
+              {{ client.name }} · {{ client.phone }} · {{ client.purchases }} compras
+            </option>
+          </select>
+        </label>
+        <div class="pair">
+          <label class="line">
+            <span>Nombre del cliente</span>
+            <input v-model="clientName" />
+          </label>
+          <label class="line">
+            <span>Celular (WhatsApp)</span>
+            <input v-model="clientPhone" inputmode="numeric" @change="matchClient" />
+          </label>
+        </div>
+        <span class="caption">Modalidad de entrega</span>
+        <div class="modes">
+          <button type="button" :class="{ on: fulfillment === 'RECOJO' }" @click="fulfillment = 'RECOJO'">En local</button>
+          <button v-if="selectedPoint?.chargesDelivery" type="button" :class="{ on: fulfillment === 'DELIVERY' }" @click="fulfillment = 'DELIVERY'">Delivery</button>
+        </div>
+        <label v-if="fulfillment === 'DELIVERY'" class="line">
+          <span>Dirección de entrega</span>
+          <input v-model="clientAddress" placeholder="Dirección donde se entrega el pedido" />
+        </label>
+        <p v-if="fulfillment === 'DELIVERY'" class="hint">Delivery a domicilio S/ {{ Number(selectedPoint?.deliveryFee || 0).toFixed(2) }}</p>
+        <p class="hint">Luego agregarás los ítems desde la tienda virtual del negocio.</p>
+        <p v-if="createError" class="error create-msg">{{ createError }}</p>
+        <button class="save" type="button" @click="goToStore">Agregar ítems desde la tienda</button>
+        <button class="ghost" type="button" @click="cancelCreate">Cancelar</button>
+      </template>
     </section>
   </ScreenFrame>
 </template>
@@ -588,12 +518,30 @@ watch(menuOfferId, (_next, previous) => {
 }
 
 .sheet,
-.ticket {
+.ticket,
+.today {
   margin-bottom: 12px;
   padding: 16px;
   background: #fff;
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-soft);
+}
+
+.create .ghost {
+  width: 100%;
+}
+
+.pay-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pay-msg,
+.create-msg {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .sheet,
@@ -719,14 +667,35 @@ watch(menuOfferId, (_next, previous) => {
   align-items: center;
 }
 
+.served-block,
+.menu-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-line);
+}
+
+.served-name {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--color-ink);
+}
+
 .tools span {
-  flex: 1;
+  flex: none;
   min-width: 0;
   font-size: 12px;
+  font-weight: 700;
+  color: var(--color-muted);
 }
 
 .tools input {
   width: 88px;
+  flex: 1;
 }
 
 .tools button,
@@ -775,9 +744,83 @@ watch(menuOfferId, (_next, previous) => {
   flex: 1;
 }
 
-.menu-edit {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+@media (min-width: 1024px) {
+  .head {
+    margin-bottom: 20px;
+  }
+
+  .head h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .pair {
+    max-width: 720px;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .today,
+  .sheet {
+    padding: 22px 24px;
+    margin-bottom: 16px;
+  }
+
+  .sheet h3,
+  .today h3,
+  .ticket .who {
+    font-size: 18px;
+  }
+
+  .chips {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .chips button {
+    min-height: 44px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+
+  .today {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+
+  .today > header,
+  .today > .line,
+  .today > .chips,
+  .today > .hint {
+    grid-column: 1 / -1;
+  }
+
+  .ticket {
+    margin-bottom: 0;
+    padding: 18px 20px;
+  }
+
+  .ticket .sum {
+    font-size: 15px;
+  }
+
+  .hint {
+    font-size: 13px;
+  }
+
+  .actions {
+    gap: 10px;
+  }
+
+  .create {
+    max-width: 720px;
+  }
+
+  .create .save,
+  .create .ghost {
+    max-width: 420px;
+  }
 }
 </style>
