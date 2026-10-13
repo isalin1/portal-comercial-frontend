@@ -9,15 +9,19 @@ import type { AccountPlan, AccountUser } from '../types'
 const auth = usePortalAuth()
 const router = useRouter()
 const account = ref<AccountUser | null>(null)
+const accountLoading = ref(false)
+const accountError = ref('')
 const agendaEnabled = ref(false)
 const canOrder = ref(false)
 const canSummary = ref(false)
 const salesWhatsapp = ref('')
 const settingsMessage = ref('')
 const pendingAudit = ref(0)
+const pendingPlanUsers = ref(0)
 
 const adminModules = [
   { name: 'audit', label: 'Auditoría de Publicaciones' },
+  { name: 'consent-audit', label: 'Auditoría de Autorizaciones' },
   { name: 'catalog', label: 'Rubros y Categorías' },
   { name: 'empresarios', label: 'Usuarios y Estados' },
   { name: 'plans', label: 'Planes' },
@@ -96,32 +100,31 @@ const empresarioLinks = computed(() => {
 
 const planTitle = computed(() => {
   const user = account.value
-  const plan = user?.planCatalog
-  if (plan?.name === 'Libre' || (!plan && user?.plan === 'FREE')) return 'Plan Free'
+  if (!user) return accountLoading.value ? 'Cargando plan…' : 'Plan no disponible'
+  const plan = user.planCatalog
+  if (plan?.name === 'Libre' || (!plan && user.plan === 'FREE')) return 'Plan Free'
   if (!plan) return 'Sin plan'
   return plan.commercialName ? `${plan.commercialName} ${plan.name}` : plan.name
 })
 
 const vigenciaTone = computed(() => {
-  const left = daysUntil(account.value?.vigenciaEnd)
+  if (!account.value) return accountLoading.value ? 'loading' : 'idle'
+  const left = daysUntil(account.value.vigenciaEnd)
   if (left == null || left < 0) return 'error'
   return 'ok'
 })
 
-onMounted(async () => {
-  if (auth.userType === 'ADMIN') {
-    try {
-      const [{ data }, audit] = await Promise.all([
-        http.get<{ salesWhatsapp: string }>('/settings'),
-        http.get<{ count: number }[]>('/auditoria'),
-      ])
-      salesWhatsapp.value = data.salesWhatsapp
-      pendingAudit.value = audit.data.reduce((total, row) => total + row.count, 0)
-    } catch {
-      salesWhatsapp.value = salesWhatsapp.value || '940485657'
-    }
-  }
-  if (auth.userType !== 'EMPRESARIO' || !auth.user) return
+const vigenciaBadge = computed(() => {
+  if (vigenciaTone.value === 'ok') return 'Activo'
+  if (vigenciaTone.value === 'error') return 'Vencido'
+  if (vigenciaTone.value === 'loading') return '…'
+  return '—'
+})
+
+async function loadEmpresarioAccount() {
+  if (!auth.user) return
+  accountLoading.value = true
+  accountError.value = ''
   try {
     const { data } = await http.get<AccountUser>(`/user/${auth.user.id}`)
     account.value = data
@@ -146,8 +149,33 @@ onMounted(async () => {
       ? (await http.get<{ enabled: boolean }>('/agenda/access/me')).data.enabled
       : false
   } catch {
-    // El panel sigue mostrando los datos de la sesión.
+    account.value = null
+    canOrder.value = false
+    canSummary.value = false
+    agendaEnabled.value = false
+    accountError.value = 'No se pudo cargar el plan. Revisa tu conexión e inténtalo de nuevo.'
+  } finally {
+    accountLoading.value = false
   }
+}
+
+onMounted(async () => {
+  if (auth.userType === 'ADMIN') {
+    try {
+      const [{ data }, audit, pendingPlans] = await Promise.all([
+        http.get<{ salesWhatsapp: string }>('/settings'),
+        http.get<{ count: number }[]>('/auditoria'),
+        http.get<{ count: number }>('/user/pending-plan-count'),
+      ])
+      salesWhatsapp.value = data.salesWhatsapp
+      pendingAudit.value = audit.data.reduce((total, row) => total + row.count, 0)
+      pendingPlanUsers.value = pendingPlans.data.count || 0
+    } catch {
+      salesWhatsapp.value = salesWhatsapp.value || '940485657'
+    }
+  }
+  if (auth.userType !== 'EMPRESARIO' || !auth.user) return
+  await loadEmpresarioAccount()
 })
 
 function logout() {
@@ -171,9 +199,13 @@ function logout() {
       <section class="plan" :class="vigenciaTone">
         <header>
           <strong>{{ planTitle }}</strong>
-          <span>{{ vigenciaTone === 'ok' ? 'Activo' : 'Vencido' }}</span>
+          <span>{{ vigenciaBadge }}</span>
         </header>
         <p v-for="(line, index) in vigenciaLines" :key="index">{{ line }}</p>
+        <p v-if="accountError" class="plan-error">{{ accountError }}</p>
+        <button v-if="accountError" class="retry" type="button" :disabled="accountLoading" @click="loadEmpresarioAccount">
+          {{ accountLoading ? 'Cargando…' : 'Reintentar' }}
+        </button>
       </section>
       <nav class="menu">
         <router-link v-for="link in empresarioLinks" :key="link.name" :to="{ name: link.name }">
@@ -201,6 +233,7 @@ function logout() {
         <router-link v-for="module in adminModules" :key="module.name" :to="{ name: module.name }">
           <span>{{ module.label }}</span>
           <b v-if="module.name === 'audit' && pendingAudit">{{ pendingAudit }} pend.</b>
+          <b v-else-if="module.name === 'empresarios' && pendingPlanUsers">{{ pendingPlanUsers }} pend.</b>
         </router-link>
       </section>
       <router-link class="ghost" :to="{ name: 'businesses' }">Mi Negocio</router-link>
@@ -318,10 +351,47 @@ function logout() {
   background: var(--color-brand);
 }
 
-.plan p {
+.plan.loading,
+.plan.idle {
+  background: #f8fafc;
+}
+
+.plan.loading strong,
+.plan.idle strong,
+.plan.loading p,
+.plan.idle p,
+.plan-error {
+  color: #64748b;
+}
+
+.plan.loading header span,
+.plan.idle header span {
+  background: #94a3b8;
+}
+
+.plan p,
+.plan-error {
   margin: 6px 0 0;
   font-size: 12px;
   line-height: 16px;
+}
+
+.retry {
+  margin-top: 10px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-control);
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.retry:disabled {
+  opacity: 0.6;
 }
 
 .menu {

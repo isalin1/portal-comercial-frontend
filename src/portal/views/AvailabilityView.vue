@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import ScreenFrame from '../components/ScreenFrame.vue'
 import { apiError, http } from '../api'
+import { useActionNotice } from '../useActionNotice'
 
 type Row = {
   id: number
@@ -22,8 +23,9 @@ const date = ref(limaToday())
 const trackingToday = ref(true)
 const items = ref<Row[]>([])
 const error = ref('')
-const message = ref('')
 const saving = ref(false)
+const saveButton = ref<HTMLButtonElement | null>(null)
+const { notice, showNotice, clearNotice } = useActionNotice()
 
 const menuGroups = [
   { key: 'ENTRADA', label: 'Entrada' },
@@ -88,7 +90,7 @@ onUnmounted(() => {
 
 async function save() {
   error.value = ''
-  message.value = ''
+  clearNotice()
   saving.value = true
   try {
     const { data } = await http.put<{ items: Row[] }>('/items/availability', {
@@ -96,7 +98,8 @@ async function save() {
       itemIds: items.value.filter((item) => item.available).map((item) => item.id),
     })
     items.value = data.items
-    message.value = 'Disponibilidad guardada'
+    showNotice('La disponibilidad del día quedó registrada.')
+    saveButton.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   } catch (err) {
     error.value = apiError(err)
   } finally {
@@ -111,7 +114,6 @@ async function save() {
       <h2>Disponibilidad del día</h2>
     </header>
     <p v-if="error" class="error">{{ error }}</p>
-    <p v-if="message" class="ok">{{ message }}</p>
     <div class="filters">
       <label class="when">
         <span>Fecha de vigencia</span>
@@ -188,8 +190,9 @@ async function save() {
         </label>
       </div>
     </template>
-    <button class="save" type="button" :disabled="saving || !items.length" @click="save">
-      {{ saving ? 'Guardando…' : 'Guardar disponibilidad' }}
+    <p v-if="notice" class="action-ok" role="status">{{ notice }}</p>
+    <button ref="saveButton" class="save" type="button" :disabled="saving || !items.length" @click="save">
+      {{ saving ? 'Guardando…' : 'Confirmar' }}
     </button>
   </ScreenFrame>
 </template>

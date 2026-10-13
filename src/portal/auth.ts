@@ -111,8 +111,14 @@ export const usePortalAuth = defineStore('portalAuth', () => {
     userType: UserType
     plan?: string
     confirmUpgrade?: boolean
+    referenceZoneId?: number
   }) {
-    const { data } = await http.post<{ message: string; upgradedFromClient?: boolean; becameEmpresario?: boolean }>(
+    const { data } = await http.post<{
+      message: string
+      upgradedFromClient?: boolean
+      becameEmpresario?: boolean
+      requiresEmailVerification?: boolean
+    }>(
       '/auth/register',
       payload,
     )

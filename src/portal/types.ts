@@ -220,6 +220,7 @@ export interface AccountPlan {
 export interface AccountUser {
   id: number
   isActive: boolean
+  emailVerifiedAt?: string | null
   pendingEmpresario?: boolean
   termsAcceptedAt?: string | null
   plan?: string | null
@@ -228,6 +229,8 @@ export interface AccountUser {
   vigenciaStart?: string | null
   vigenciaEnd?: string | null
   vigenciaDays?: number | null
+  referenceZoneId?: number | null
+  referenceZone?: Zone | null
   datUser: {
     firstName: string
     lastName: string
@@ -235,5 +238,13 @@ export interface AccountUser {
     phone: string
     userType: UserType
   }
-  businesses?: { id: number; commercialName: string; legalName: string; rubro?: { id: number; name: string; allowsOrders?: boolean; allowsAgenda?: boolean }; category?: { id: number; name: string } | null }[]
+  businesses?: {
+    id: number
+    commercialName: string
+    legalName: string
+    zoneId?: number | null
+    zone?: Zone | null
+    rubro?: { id: number; name: string; allowsOrders?: boolean; allowsAgenda?: boolean }
+    category?: { id: number; name: string } | null
+  }[]
 }

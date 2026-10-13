@@ -84,6 +84,92 @@ a { color: inherit; }
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
+/* Encabezado Ventalinks (todas las pantallas con ScreenFrame) */
+.topbar.topbar--brand {
+  min-height: 64px;
+  padding: 10px 14px;
+  gap: 8px;
+  background: #fff;
+  color: #0f172a;
+  border-bottom: 1px solid #f1f5f9;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.topbar.topbar--brand button.back {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+.topbar.topbar--brand a,
+.topbar.topbar--brand button.link {
+  color: #0f172a;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+.brand-pin {
+  width: 40px;
+  height: 46px;
+  flex: 0 0 auto;
+  display: block;
+}
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.brand-name {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: #0f172a;
+  text-transform: uppercase;
+}
+.brand-name span {
+  color: var(--color-brand);
+}
+.brand-tag {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  line-height: 1.2;
+  color: #64748b;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.brand-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-brand);
+  flex: 0 0 auto;
+}
+/* Con botón volver, compactar un poco en móvil */
+.topbar.topbar--brand:has(.back) .brand-pin {
+  width: 34px;
+  height: 39px;
+}
+.topbar.topbar--brand:has(.back) .brand-name {
+  font-size: 16px;
+}
+.topbar.topbar--brand:has(.back) .brand-tag {
+  font-size: 8px;
+  letter-spacing: 0.14em;
+}
+
 .rubro-title {
   margin: 18px 0 10px;
   font-size: 15px;
@@ -306,6 +392,21 @@ a { color: inherit; }
   border-radius: 4px;
   margin-bottom: 10px;
   font-size: 14px;
+}
+
+/* Confirmación visible junto a botones de acción (disponibilidad, pedido cliente, etc.) */
+.action-ok {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-control);
+  background: #ecfdf3;
+  color: #166534;
+  border: 1px solid #86efac;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
 }
 
 .grid {
@@ -618,6 +719,26 @@ button.product-card {
 
   .phone.fluid.storefront .topbar h1 {
     font-size: 14px;
+  }
+
+  .phone.fluid .topbar.topbar--brand {
+    min-height: 72px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .phone.fluid .brand-pin {
+    width: 46px;
+    height: 53px;
+  }
+
+  .phone.fluid .brand-name {
+    font-size: 22px;
+  }
+
+  .phone.fluid .brand-tag {
+    font-size: 10px;
+    letter-spacing: 0.22em;
   }
 
   .phone.fluid .body {

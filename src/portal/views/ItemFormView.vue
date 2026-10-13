@@ -173,6 +173,11 @@ function addLine() {
   form.value.descriptions.push({ id: undefined, description: '', price: 0, unitId: units.value[0]?.id || 0 })
 }
 
+function removeLine(index: number) {
+  if (form.value.descriptions.length < 2) return
+  form.value.descriptions.splice(index, 1)
+}
+
 async function quitar() {
   error.value = ''
   try {
@@ -214,10 +219,17 @@ async function submit() {
     error.value = 'El segundo pertenece a un solo tipo de menú'
     return
   }
+  // Quita borradores vacíos (filas agregadas por error y aún no guardadas)
+  form.value.descriptions = form.value.descriptions.filter(
+    (line) => Boolean(line.description.trim()) || Boolean(line.id),
+  )
+  if (!form.value.descriptions.length) {
+    form.value.descriptions = [{ id: undefined, description: '', price: 0, unitId: units.value[0]?.id || 0 }]
+  }
   if (pricedKind.value) {
     const incomplete = form.value.descriptions.some((line) => {
       const hasDesc = Boolean(line.description.trim())
-      const hasPriceOrUnit = line.unitId || line.price != null
+      const hasPriceOrUnit = Boolean(line.unitId) || line.price != null
       return hasPriceOrUnit && !hasDesc
     })
     if (incomplete || !form.value.descriptions.some((line) => line.description.trim())) {
@@ -388,12 +400,23 @@ async function submit() {
           <span>Variante principal</span>
         </header>
         <div v-for="(line, index) in form.descriptions" :key="index" class="grid">
+          <div class="line-head">
+            <span>Variante {{ index + 1 }}</span>
+            <button
+              v-if="form.descriptions.length > 1"
+              class="remove-line"
+              type="button"
+              @click="removeLine(index)"
+            >
+              Quitar
+            </button>
+          </div>
           <label>
             <span>{{ isDailyOffer ? 'Característica / detalle' : 'Descripción' }}</span>
             <input
               v-model="line.description"
               :placeholder="isDailyOffer ? 'Ej. Lomo saltado + chicha 1L' : 'Carne, papas y arroz'"
-              :required="pricedKind"
+              :required="pricedKind && form.descriptions.length === 1"
             />
           </label>
           <label v-if="pricedKind">
@@ -624,6 +647,34 @@ async function submit() {
   border: 1px solid #e5e7eb;
   border-radius: var(--radius-card);
   background: #f8fafc;
+}
+
+.line-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.line-head span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.remove-line {
+  border: 0;
+  background: transparent;
+  color: #9f1239;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
 }
 
 .grid input[type='number'] {

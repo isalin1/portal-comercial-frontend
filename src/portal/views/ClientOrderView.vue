@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ScreenFrame from '../components/ScreenFrame.vue'
 import { apiError, http } from '../api'
@@ -309,7 +309,8 @@ async function save() {
     })
     applyOrder(data)
     editing.value = false
-    message.value = 'Pedido actualizado'
+    message.value = 'Los cambios del pedido quedaron registrados.'
+    nextTick(() => document.getElementById('order-status-notice')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))
   } catch (err) {
     error.value = apiError(err)
   } finally {
@@ -404,7 +405,7 @@ async function discardOrder() {
       </section>
 
       <p v-if="error" class="error">{{ error }}</p>
-      <p v-if="message" class="ok">{{ message }}</p>
+      <p v-if="message" id="order-status-notice" class="action-ok" role="status">{{ message }}</p>
 
       <template v-if="!editing">
         <section class="card">

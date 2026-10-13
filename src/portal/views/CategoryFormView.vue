@@ -193,49 +193,53 @@ async function submit() {
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
+  <ScreenFrame storefront back bar fluid>
     <header class="head">
       <h2>{{ selectedId ? 'Editar categoría' : 'Agregar categoría' }}</h2>
       <p v-if="selectedRubroName">{{ selectedRubroName }}</p>
     </header>
     <p v-if="error" class="error">{{ error }}</p>
     <p v-if="message" class="ok">{{ message }}</p>
-    <section class="sheet">
-      <h3>Categorías actuales</h3>
-      <p v-if="!visibleCategories.length" class="empty">Este rubro no tiene categorías.</p>
-      <article v-for="category in visibleCategories" :key="category.id" :class="{ on: selectedId === category.id }">
-        <img v-if="category.imageUrl" :src="category.imageUrl" :alt="category.name" />
-        <div v-else class="blank" />
-        <strong>{{ category.name }}</strong>
-        <div class="pair">
-          <button class="yes" type="button" @click="selectCategory(category)">Editar</button>
-          <button class="no" type="button" @click="pendingDelete = category">Eliminar</button>
+    <div class="layout">
+      <section class="sheet list-sheet">
+        <h3>Categorías actuales</h3>
+        <p v-if="!visibleCategories.length" class="empty">Este rubro no tiene categorías.</p>
+        <div v-else class="list">
+          <article v-for="category in visibleCategories" :key="category.id" :class="{ on: selectedId === category.id }">
+            <img v-if="category.imageUrl" :src="category.imageUrl" :alt="category.name" />
+            <div v-else class="blank" />
+            <strong>{{ category.name }}</strong>
+            <div class="pair">
+              <button class="yes" type="button" @click="selectCategory(category)">Editar</button>
+              <button class="no" type="button" @click="pendingDelete = category">Eliminar</button>
+            </div>
+            <div v-if="pendingDelete?.id === category.id" class="warn">
+              <p>Eliminar la categoría «{{ category.name }}». Si tiene productos, también se eliminan.</p>
+              <div class="pair">
+                <button class="yes" type="button" :disabled="saving" @click="removeCategory">Eliminar</button>
+                <button class="no" type="button" :disabled="saving" @click="pendingDelete = null">Cancelar</button>
+              </div>
+            </div>
+          </article>
         </div>
-        <div v-if="pendingDelete?.id === category.id" class="warn">
-          <p>Eliminar la categoría «{{ category.name }}». Si tiene productos, también se eliminan.</p>
-          <div class="pair">
-            <button class="yes" type="button" :disabled="saving" @click="removeCategory">Eliminar</button>
-            <button class="no" type="button" :disabled="saving" @click="pendingDelete = null">Cancelar</button>
-          </div>
-        </div>
-      </article>
-    </section>
-    <form class="sheet" @submit.prevent="submit">
-      <h3>{{ selectedId ? 'Datos de la categoría' : 'Nueva categoría' }}</h3>
-      <img v-if="currentImage" :src="currentImage" alt="Imagen de la categoría" class="preview" />
-      <label>
-        <span>Nombre</span>
-        <input v-model="name" required placeholder="Nombre de la categoría" />
-      </label>
-      <label>
-        <span>Imagen</span>
-        <input :key="fileKey" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" @change="onImage" />
-      </label>
-      <p v-if="imageName" class="hint">Foto lista para guardar: {{ imageName }}</p>
-      <button v-if="currentImage || removeImage" class="no wide" type="button" @click="clearImage">Quitar foto</button>
-      <button class="save" type="submit" :disabled="saving">{{ saving ? 'Guardando…' : selectedId ? 'Guardar categoría' : 'Registrar categoría' }}</button>
-      <button v-if="selectedId" class="drop" type="button" @click="startCreate">Volver al registro</button>
-    </form>
+      </section>
+      <form class="sheet form-sheet" @submit.prevent="submit">
+        <h3>{{ selectedId ? 'Datos de la categoría' : 'Nueva categoría' }}</h3>
+        <img v-if="currentImage" :src="currentImage" alt="Imagen de la categoría" class="preview" />
+        <label>
+          <span>Nombre</span>
+          <input v-model="name" required placeholder="Nombre de la categoría" />
+        </label>
+        <label>
+          <span>Imagen</span>
+          <input :key="fileKey" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" @change="onImage" />
+        </label>
+        <p v-if="imageName" class="hint">Foto lista para guardar: {{ imageName }}</p>
+        <button v-if="currentImage || removeImage" class="no wide" type="button" @click="clearImage">Quitar foto</button>
+        <button class="save" type="submit" :disabled="saving">{{ saving ? 'Guardando…' : selectedId ? 'Guardar categoría' : 'Registrar categoría' }}</button>
+        <button v-if="selectedId" class="drop" type="button" @click="startCreate">Volver al registro</button>
+      </form>
+    </div>
   </ScreenFrame>
 </template>
 
@@ -301,4 +305,101 @@ label input[type='file'] { font: inherit; font-size: 12px; }
 .empty, .hint { margin: 0 0 8px; color: #64748b; font-size: 12px; }
 .warn { margin-top: 8px; padding: 8px; border-radius: 10px; background: #fff; color: #9f1239; font-size: 12px; }
 .warn p { margin: 0; }
+
+.layout {
+  display: flex;
+  flex-direction: column;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  .head {
+    margin-bottom: 22px;
+  }
+
+  .head h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .head p {
+    margin-top: 8px;
+    font-size: 15px;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(320px, 420px);
+    gap: 18px;
+    align-items: start;
+  }
+
+  .sheet {
+    margin-bottom: 0;
+    padding: 20px 22px;
+  }
+
+  .sheet h3 {
+    font-size: 16px;
+    margin-bottom: 14px;
+  }
+
+  .list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .sheet article {
+    margin-bottom: 0;
+    padding: 12px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sheet img,
+  .blank {
+    height: 140px;
+  }
+
+  .sheet strong {
+    margin-top: 10px;
+    font-size: 15px;
+    flex: 1;
+  }
+
+  .yes,
+  .no {
+    min-height: 40px;
+    font-size: 13px;
+  }
+
+  .preview {
+    height: 180px;
+  }
+
+  .form-sheet label span {
+    font-size: 13px;
+  }
+
+  .form-sheet label input:not([type='file']) {
+    min-height: 48px;
+    font-size: 15px;
+  }
+
+  .save {
+    min-height: 48px;
+    font-size: 14px;
+  }
+
+  .empty,
+  .hint {
+    font-size: 13px;
+  }
+}
 </style>

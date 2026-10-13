@@ -8,6 +8,8 @@ import { whatsappChatUrl, openWhatsAppChat } from '../whatsapp'
 const router = useRouter()
 const phone = ref('940485657')
 const maxProfessionals = ref(3)
+/** Temporal: ocultar montos en blanco (no en cero). Poner false para restaurar. */
+const hidePrices = true
 type PlanCard = { id: number; name: string; days: number; commercialName: string; price: number | string }
 const plans = ref<PlanCard[]>([])
 
@@ -71,6 +73,18 @@ function money(value: number, digits = 2) {
 function moneyPromo(value: number | string) {
   const n = Number(value)
   return Number.isInteger(n) ? `S/. ${n.toFixed(1)}` : `S/. ${n.toFixed(1)}`
+}
+
+function dayPrice(plan: PlanCard) {
+  return hidePrices ? '\u00a0' : money(dailyEquivalent(plan))
+}
+
+function monthPrice(plan: PlanCard) {
+  return hidePrices ? '\u00a0' : money(monthlyEquivalent(plan))
+}
+
+function planPrice(plan: PlanCard) {
+  return hidePrices ? '\u00a0' : moneyPromo(plan.price)
 }
 
 /** Costo equivalente mensual = precio del plan / número de meses */
@@ -185,11 +199,11 @@ onMounted(async () => {
           <div class="equiv-grid">
             <div>
               <span>Por día</span>
-              <strong>{{ money(dailyEquivalent(plan)) }}</strong>
+              <strong>{{ dayPrice(plan) }}</strong>
             </div>
             <div>
               <span>Por mes</span>
-              <strong>{{ money(monthlyEquivalent(plan)) }}</strong>
+              <strong>{{ monthPrice(plan) }}</strong>
             </div>
           </div>
         </div>
@@ -204,8 +218,8 @@ onMounted(async () => {
         <div class="promo">
           <span class="promo-tag">{{ isFree(plan) ? 'Sin costo' : 'Precio promocional' }}</span>
           <p class="amount">
-            {{ moneyPromo(plan.price) }}
-            <small>/ {{ period(plan) }}</small>
+            {{ planPrice(plan) }}
+            <small v-if="!hidePrices">/ {{ period(plan) }}</small>
           </p>
           <p class="promo-note">{{ promoNote(plan) }}</p>
         </div>

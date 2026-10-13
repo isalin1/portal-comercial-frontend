@@ -206,7 +206,7 @@ async function register() {
 </script>
 
 <template>
-  <ScreenFrame storefront back bar>
+  <ScreenFrame storefront back bar fluid>
     <p v-if="error" class="error">{{ error }}</p>
     <form v-if="user" class="edit" @submit.prevent="register">
       <header class="head">
@@ -214,42 +214,45 @@ async function register() {
         <p class="who">
           <b>{{ form.firstName }} {{ form.lastName }}</b>
           <span :class="{ off: !user.isActive }">{{ user.isActive ? 'Activo' : 'Inactivo' }}</span>
+          <span v-if="!user.emailVerifiedAt" class="off">Correo sin verificar</span>
         </p>
         <p v-if="user.businesses?.[0]?.category?.name" class="hint">{{ user.businesses[0].category.name }}</p>
         <p class="hint">Gestión centralizada de cuenta, plazos y vigencias</p>
       </header>
-      <section class="sheet">
+      <section class="sheet data">
         <header>
           <h3>Datos personales</h3>
           <span>ID: {{ user.id }}</span>
         </header>
-        <label>
-          <span>Nombres</span>
-          <input v-model="form.firstName" required />
-        </label>
-        <label>
-          <span>Apellidos</span>
-          <input v-model="form.lastName" required />
-        </label>
-        <label>
-          <span>Celular / WhatsApp</span>
-          <input v-model="form.phone" required />
-        </label>
-        <label>
-          <span>Correo electrónico</span>
-          <input v-model="form.email" type="email" required />
-        </label>
-        <label>
-          <span>Nueva contraseña</span>
-          <input v-model="form.password" type="password" minlength="6" placeholder="Dejar en blanco para no cambiarla" />
-          <small>Opcional. Se cambia solo si se escribe una contraseña nueva.</small>
-        </label>
-        <label>
-          <span>Fin de vigencia actual <em>Fecha base</em></span>
-          <input :value="day(user.vigenciaEnd)" readonly />
-        </label>
+        <div class="fields">
+          <label>
+            <span>Nombres</span>
+            <input v-model="form.firstName" required />
+          </label>
+          <label>
+            <span>Apellidos</span>
+            <input v-model="form.lastName" required />
+          </label>
+          <label>
+            <span>Celular / WhatsApp</span>
+            <input v-model="form.phone" required />
+          </label>
+          <label>
+            <span>Correo electrónico</span>
+            <input v-model="form.email" type="email" required />
+          </label>
+          <label class="wide">
+            <span>Nueva contraseña</span>
+            <input v-model="form.password" type="password" minlength="6" placeholder="Dejar en blanco para no cambiarla" />
+            <small>Opcional. Se cambia solo si se escribe una contraseña nueva.</small>
+          </label>
+          <label>
+            <span>Fin de vigencia actual <em>Fecha base</em></span>
+            <input :value="day(user.vigenciaEnd)" readonly />
+          </label>
+        </div>
       </section>
-      <section class="sheet">
+      <section class="sheet plans">
         <header>
           <div>
             <h3>Pago recibido / Asignar plan</h3>
@@ -257,26 +260,28 @@ async function register() {
           </div>
           <b>{{ paymentPlans.length }}</b>
         </header>
-        <button
-          v-for="plan in paymentPlans"
-          :key="plan.id"
-          class="plan"
-          :class="{ on: planId === plan.id }"
-          type="button"
-          @click="markPayment(plan.id)"
-        >
-          <i />
-          <span>
-            <strong>{{ plan.days }} días · Plan {{ plan.name }}</strong>
-            <small>{{ plan.commercialName }}</small>
-          </span>
-          <em>S/ {{ Number(plan.price || 0).toFixed(2) }}</em>
-        </button>
+        <div class="plan-list">
+          <button
+            v-for="plan in paymentPlans"
+            :key="plan.id"
+            class="plan"
+            :class="{ on: planId === plan.id }"
+            type="button"
+            @click="markPayment(plan.id)"
+          >
+            <i />
+            <span>
+              <strong>{{ plan.days }} días · Plan {{ plan.name }}</strong>
+              <small>{{ plan.commercialName }}</small>
+            </span>
+            <em>S/ {{ Number(plan.price || 0).toFixed(2) }}</em>
+          </button>
+        </div>
       </section>
-      <section class="sheet">
+      <section class="sheet status">
         <p class="label">Actualizar estado</p>
         <div class="segment">
-          <button type="button" :class="{ on: user.isActive }" :disabled="saving" @click="setStatus(true)">Activo</button>
+          <button type="button" :class="{ on: user.isActive }" :disabled="saving || !user.emailVerifiedAt" @click="setStatus(true)">Activo</button>
           <button type="button" :class="{ on: !user.isActive }" :disabled="saving" @click="setStatus(false)">Inactivo</button>
         </div>
         <label>
@@ -284,11 +289,14 @@ async function register() {
           <input class="next" :value="updatedEnd || 'vigencia actual + plazo'" readonly />
           <small v-if="updatedEnd">Se calcula sumando el plazo a la fecha base actual ({{ day(user.vigenciaEnd) }}).</small>
         </label>
+        <p v-if="!user.emailVerifiedAt" class="note">El correo aún no está verificado. La cuenta se puede marcar activa cuando la persona abra el enlace.</p>
         <p v-if="user.pendingPlan && planEffect.kind !== 'superior' && planEffect.kind !== 'asignado'" class="note">Hay un plan inferior en espera: {{ planLabel(user.pendingPlan) }}. Se aplicará al terminar la vigencia actual.</p>
         <p v-if="planEffect.text" class="note">{{ planEffect.text }}</p>
       </section>
-      <button class="save" type="submit" :disabled="saving">{{ saving ? 'Guardando…' : 'Registrar cambios' }}</button>
-      <button class="back" type="button" @click="router.push({ name: 'empresarios' })">Cancelar y regresar</button>
+      <div class="actions">
+        <button class="save" type="submit" :disabled="saving">{{ saving ? 'Guardando…' : 'Registrar cambios' }}</button>
+        <button class="cancel" type="button" @click="router.push({ name: 'empresarios' })">Cancelar y regresar</button>
+      </div>
     </form>
   </ScreenFrame>
 </template>
@@ -332,6 +340,7 @@ async function register() {
   color: var(--color-brand);
   font-size: 12px;
 }
+.fields { display: flex; flex-direction: column; }
 .sheet label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
 .sheet label span { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 700; }
 .sheet label em {
@@ -357,18 +366,20 @@ async function register() {
 .sheet input.next { border-color: #fecaca; background: #fff5f5; color: #0f172a; }
 .sheet small, .note { margin: 0; color: #64748b; font-size: 11px; line-height: 1.4; }
 .note { margin-top: 8px; }
+.plan-list { display: flex; flex-direction: column; gap: 8px; }
 .plan {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
-  margin-bottom: 8px;
+  margin: 0;
   padding: 12px;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   background: #f8fafc;
   text-align: left;
   font: inherit;
+  cursor: pointer;
 }
 .plan i {
   flex: none;
@@ -407,7 +418,8 @@ async function register() {
 }
 .segment button.on { background: var(--color-brand); color: #fff; }
 .segment button:disabled { opacity: 0.6; }
-.save, .back { width: 100%; border: 0; font: inherit; }
+.actions { display: flex; flex-direction: column; gap: 4px; }
+.save, .cancel { width: 100%; border: 0; font: inherit; }
 .save {
   min-height: 48px;
   border-radius: var(--radius-control);
@@ -416,5 +428,131 @@ async function register() {
   font-weight: 700;
 }
 .save:disabled { opacity: 0.6; }
-.back { min-height: 40px; margin-top: 4px; background: transparent; color: #64748b; font-size: 12px; font-weight: 700; }
+.cancel { min-height: 40px; background: transparent; color: #64748b; font-size: 12px; font-weight: 700; }
+
+@media (min-width: 1024px) {
+  .edit {
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  .head {
+    margin-bottom: 24px;
+  }
+
+  .head h2 {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .who b {
+    font-size: 18px;
+  }
+
+  .who span {
+    font-size: 12px;
+    padding: 3px 10px;
+  }
+
+  .hint {
+    font-size: 14px;
+  }
+
+  .sheet {
+    padding: 20px 22px;
+    margin-bottom: 18px;
+  }
+
+  .sheet > header {
+    margin-bottom: 16px;
+  }
+
+  .sheet h3,
+  .label {
+    font-size: 13px;
+  }
+
+  .fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 16px;
+  }
+
+  .fields label {
+    margin-bottom: 0;
+  }
+
+  .fields label.wide {
+    grid-column: 1 / -1;
+  }
+
+  .sheet label span {
+    font-size: 13px;
+  }
+
+  .sheet input {
+    min-height: 48px;
+    font-size: 15px;
+    border-radius: var(--radius-control);
+  }
+
+  .sheet small,
+  .note {
+    font-size: 12px;
+  }
+
+  .plan-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .plan {
+    padding: 14px 16px;
+    min-height: 64px;
+  }
+
+  .plan strong {
+    font-size: 13px;
+  }
+
+  .plan small {
+    font-size: 12px;
+  }
+
+  .plan em {
+    font-size: 14px;
+  }
+
+  .status .segment {
+    max-width: 360px;
+  }
+
+  .segment button {
+    min-height: 40px;
+    font-size: 13px;
+  }
+
+  .status label {
+    max-width: 420px;
+  }
+
+  .actions {
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+    margin-top: 8px;
+  }
+
+  .save {
+    width: auto;
+    min-width: 260px;
+    max-width: 320px;
+  }
+
+  .cancel {
+    width: auto;
+    font-size: 13px;
+  }
+}
 </style>

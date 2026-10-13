@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ScreenFrame from '../components/ScreenFrame.vue'
-import { apiError } from '../api'
+import { apiError, apiErrorCode, http } from '../api'
 import { needsTerms, safeNext, usePortalAuth } from '../auth'
 import type { UserType } from '../types'
 
@@ -13,7 +13,10 @@ const email = ref('')
 const password = ref('')
 const error = ref('')
 const note = ref('')
+const resendMessage = ref('')
+const canResend = ref(false)
 const loading = ref(false)
+const resending = ref(false)
 
 const tipo = computed(() => (route.query.tipo === 'empresario' ? 'empresario' : route.query.tipo === 'cliente' ? 'cliente' : ''))
 const role = computed(() => (tipo.value === 'empresario' ? 'empresario' : 'cliente'))
@@ -33,8 +36,27 @@ function choose(next: 'cliente' | 'empresario') {
   router.replace({ name: 'login', query: { ...route.query, tipo: next } })
 }
 
+async function resend() {
+  error.value = ''
+  resendMessage.value = ''
+  resending.value = true
+  try {
+    const { data } = await http.post<{ message: string }>('/auth/reenviar-verificacion', {
+      email: email.value.trim(),
+    })
+    resendMessage.value = data.message
+    canResend.value = false
+  } catch (err) {
+    error.value = apiError(err)
+  } finally {
+    resending.value = false
+  }
+}
+
 async function submit() {
   error.value = ''
+  resendMessage.value = ''
+  canResend.value = false
   loading.value = true
   try {
     const user = await auth.login(email.value, password.value)
@@ -65,6 +87,7 @@ async function submit() {
     await router.push(auth.homeFor(user.userType as UserType))
   } catch (err) {
     error.value = apiError(err)
+    canResend.value = apiErrorCode(err) === 'EMAIL_NOT_VERIFIED'
   } finally {
     loading.value = false
   }
@@ -88,6 +111,10 @@ async function submit() {
       <p v-else>Accede para publicar tu negocio y atender a tus clientes</p>
     </div>
     <p v-if="error" class="error">{{ error }}</p>
+    <button v-if="canResend" class="resend" type="button" :disabled="resending || !email" @click="resend">
+      {{ resending ? 'Enviando…' : 'Enviar otro enlace' }}
+    </button>
+    <p v-if="resendMessage" class="note">{{ resendMessage }}</p>
     <p v-if="note" class="note">{{ note }}</p>
     <form class="login-form" @submit.prevent="submit">
       <label class="login-field">
@@ -176,6 +203,26 @@ async function submit() {
   color: #5c5e65;
   font-size: 14px;
   line-height: 20px;
+}
+
+.resend {
+  display: block;
+  width: 100%;
+  height: 48px;
+  margin: 0 0 12px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--color-brand);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.resend:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .note {

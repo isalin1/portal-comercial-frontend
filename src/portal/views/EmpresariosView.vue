@@ -2,9 +2,14 @@
 import { computed, onMounted, ref } from 'vue'
 import ScreenFrame from '../components/ScreenFrame.vue'
 import { apiError, http } from '../api'
-import type { AccountUser } from '../types'
+import { isLimaMetroGeo } from '../limaMetro'
+import type { AccountUser, Zone } from '../types'
 
 type Filter = 'activos' | 'inactivos' | 'todos'
+
+type PlanBucket = { name: string; members: AccountUser[] }
+type ZoneBucket = { key: string; name: string; plans: PlanBucket[]; count: number }
+type RegionBucket = { key: string; name: string; zones: ZoneBucket[]; count: number }
 
 const users = ref<AccountUser[]>([])
 const clients = ref<AccountUser[]>([])
@@ -20,12 +25,22 @@ function businessName(user: AccountUser) {
   return user.businesses?.[0]?.commercialName || user.businesses?.[0]?.legalName || 'Sin negocio'
 }
 
-function rubroName(user: AccountUser) {
-  return user.businesses?.[0]?.rubro?.name || 'Sin rubro'
-}
-
 function categoryName(user: AccountUser) {
   return user.businesses?.[0]?.category?.name || 'Sin categoría'
+}
+
+function zoneLabel(zone?: Zone | null) {
+  if (!zone) return 'Sin zona'
+  const district = zone.district?.name
+  return district ? `${zone.name} · ${district}` : zone.name
+}
+
+function userZone(user: AccountUser): Zone | null {
+  return user.businesses?.[0]?.zone || null
+}
+
+function clientZoneLabel(user: AccountUser) {
+  return zoneLabel(user.referenceZone)
 }
 
 const freeDayOptions = [7, 15, 30, 60, 90, 180, 360]
@@ -40,6 +55,8 @@ const planOrder = [
   'Plan anual',
   'Sin plan',
 ]
+
+const regionOrder = ['lima', 'otros', 'sin']
 
 function pendingName(user: AccountUser) {
   const plan = user.pendingPlan
@@ -70,6 +87,7 @@ function matches(user: AccountUser, business = false) {
     user.datUser.email,
     business ? businessName(user) : '',
     business ? categoryName(user) : '',
+    business ? zoneLabel(userZone(user)) : clientZoneLabel(user),
   ]
     .join(' ')
     .toLowerCase()
@@ -92,17 +110,64 @@ async function saveFreePlan(days: number) {
   }
 }
 
-const groups = computed(() => {
-  const buckets = new Map<string, AccountUser[]>()
-  for (const user of visible.value) {
-    const name = planName(user)
-    buckets.set(name, [...(buckets.get(name) || []), user])
-  }
-  return [...buckets.entries()].sort((a, b) => {
-    const left = planOrder.indexOf(a[0])
-    const right = planOrder.indexOf(b[0])
+function sortPlans(plans: PlanBucket[]) {
+  return plans.sort((a, b) => {
+    const left = planOrder.indexOf(a.name)
+    const right = planOrder.indexOf(b.name)
     return (left === -1 ? 99 : left) - (right === -1 ? 99 : right)
   })
+}
+
+const regionGroups = computed((): RegionBucket[] => {
+  const regions = new Map<string, { name: string; zones: Map<string, { name: string; plans: Map<string, AccountUser[]> }> }>()
+
+  for (const user of visible.value) {
+    const zone = userZone(user)
+    let regionKey = 'sin'
+    let regionName = 'Sin ubicación'
+    if (zone) {
+      const metro = isLimaMetroGeo(zone)
+      regionKey = metro ? 'lima' : 'otros'
+      regionName = metro ? 'Lima Metropolitana' : 'Otros departamentos'
+    }
+    const zoneKey = zone ? `z-${zone.id}` : 'sin-zona'
+    const zoneName = zoneLabel(zone)
+    const plan = planName(user)
+
+    if (!regions.has(regionKey)) {
+      regions.set(regionKey, { name: regionName, zones: new Map() })
+    }
+    const region = regions.get(regionKey)!
+    if (!region.zones.has(zoneKey)) {
+      region.zones.set(zoneKey, { name: zoneName, plans: new Map() })
+    }
+    const zoneBucket = region.zones.get(zoneKey)!
+    zoneBucket.plans.set(plan, [...(zoneBucket.plans.get(plan) || []), user])
+  }
+
+  return [...regions.entries()]
+    .sort((a, b) => regionOrder.indexOf(a[0]) - regionOrder.indexOf(b[0]))
+    .map(([key, region]) => {
+      const zones = [...region.zones.entries()]
+        .sort((a, b) => a[1].name.localeCompare(b[1].name, 'es'))
+        .map(([zoneKey, zone]) => {
+          const plans = sortPlans(
+            [...zone.plans.entries()].map(([name, members]) => ({ name, members })),
+          )
+          return {
+            key: zoneKey,
+            name: zone.name,
+            plans,
+            count: plans.reduce((sum, plan) => sum + plan.members.length, 0),
+          }
+        })
+      return {
+        key,
+        name: region.name,
+        zones,
+        count: zones.reduce((sum, zone) => sum + zone.count, 0),
+      }
+    })
 })
 
 onMounted(async () => {
@@ -159,26 +224,39 @@ onMounted(async () => {
     </section>
     <p v-if="planMessage" class="ok">{{ planMessage }}</p>
     <p v-if="!visible.length" class="empty">No hay empresarios para este filtro.</p>
-    <section v-for="[name, members] in groups" :key="name" class="group">
-      <header>
-        <h3><i />{{ name }}</h3>
-        <span>{{ members.length === 1 ? '1 cuenta' : `${members.length} cuentas` }}</span>
+    <section v-for="region in regionGroups" :key="region.key" class="region">
+      <header class="region-head">
+        <h3>{{ region.name }}</h3>
+        <span>{{ region.count === 1 ? '1 cuenta' : `${region.count} cuentas` }}</span>
       </header>
-      <div class="tiles">
-        <article v-for="user in members" :key="user.id">
-          <div class="who">
-            <h4>{{ user.datUser.firstName }} {{ user.datUser.lastName }}</h4>
-            <b :class="{ off: !user.isActive }" :title="user.isActive ? 'Activo' : 'Inactivo'" />
+      <section v-for="zone in region.zones" :key="`${region.key}-${zone.key}`" class="zone-block">
+        <header class="zone-head">
+          <h4>{{ zone.name }}</h4>
+          <span>{{ zone.count === 1 ? '1 cuenta' : `${zone.count} cuentas` }}</span>
+        </header>
+        <section v-for="plan in zone.plans" :key="`${region.key}-${zone.key}-${plan.name}`" class="group">
+          <header>
+            <h3><i />{{ plan.name }}</h3>
+            <span>{{ plan.members.length === 1 ? '1 cuenta' : `${plan.members.length} cuentas` }}</span>
+          </header>
+          <div class="tiles">
+            <article v-for="user in plan.members" :key="user.id">
+              <div class="who">
+                <h4>{{ user.datUser.firstName }} {{ user.datUser.lastName }}</h4>
+                <b :class="{ off: !user.isActive }" :title="user.isActive ? 'Activo' : 'Inactivo'" />
+              </div>
+              <p class="dial">{{ user.datUser.phone || 'Sin celular' }}</p>
+              <p>{{ planName(user) }} · {{ user.isActive ? 'Activo' : 'Inactivo' }} · {{ businessName(user) }}</p>
+              <p :class="{ missing: !user.businesses?.[0]?.category }">{{ categoryName(user) }}</p>
+              <p class="end">Fin: {{ day(user.vigenciaEnd) }}</p>
+              <p v-if="!user.emailVerifiedAt" class="wait">Correo sin verificar</p>
+              <p v-if="user.pendingEmpresario" class="wait">Solicita plan empresario · sigue como cliente</p>
+              <p v-if="user.pendingPlan" class="wait">Luego: {{ pendingName(user) }}</p>
+              <router-link :to="{ name: 'vigencia', params: { id: user.id } }">Editar</router-link>
+            </article>
           </div>
-          <p class="dial">{{ user.datUser.phone || 'Sin celular' }}</p>
-          <p>{{ planName(user) }} · {{ user.isActive ? 'Activo' : 'Inactivo' }} · {{ businessName(user) }}</p>
-          <p :class="{ missing: !user.businesses?.[0]?.category }">{{ categoryName(user) }}</p>
-          <p class="end">Fin: {{ day(user.vigenciaEnd) }}</p>
-          <p v-if="user.pendingEmpresario" class="wait">Solicita plan empresario · sigue como cliente</p>
-          <p v-if="user.pendingPlan" class="wait">Luego: {{ pendingName(user) }}</p>
-          <router-link :to="{ name: 'vigencia', params: { id: user.id } }">Editar</router-link>
-        </article>
-      </div>
+        </section>
+      </section>
     </section>
     <section class="group">
       <header>
@@ -194,7 +272,9 @@ onMounted(async () => {
           </div>
           <p class="dial">{{ user.datUser.phone || 'Sin celular' }}</p>
           <p class="mail">{{ user.datUser.email }}</p>
+          <p class="zone-ref">Zona: {{ clientZoneLabel(user) }}</p>
           <p class="live" :class="{ off: !user.isActive }">{{ user.isActive ? 'Activo' : 'Inactivo' }}</p>
+          <p v-if="!user.emailVerifiedAt" class="wait">Correo sin verificar</p>
           <router-link :to="{ name: 'vigencia', params: { id: user.id } }">Editar</router-link>
         </article>
       </div>
@@ -258,9 +338,14 @@ onMounted(async () => {
   background: #fff;
   box-shadow: var(--shadow-soft);
 }
-.rule header, .group header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.rule header, .group header, .region-head, .zone-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
 .rule h3 { margin: 0; font-size: 14px; line-height: 1.3; }
-.rule header span, .group header span {
+.rule header span, .group header span, .region-head span, .zone-head span {
   flex: none;
   padding: 2px 8px;
   border-radius: 999px;
@@ -283,9 +368,33 @@ onMounted(async () => {
   font-weight: 700;
 }
 .pills button.on { background: var(--color-brand); color: #fff; }
-.group { margin-bottom: 16px; }
+.region { margin-bottom: 20px; }
+.region-head { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid var(--color-brand); }
+.region-head h3 {
+  margin: 0;
+  color: var(--color-brand);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.zone-block {
+  margin: 0 0 14px;
+  padding: 12px;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+.zone-head { margin-bottom: 10px; }
+.zone-head h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: #0f172a;
+}
+.group { margin-bottom: 12px; }
+.group:last-child { margin-bottom: 0; }
 .group header { margin-bottom: 10px; }
-.group h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.group h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
 .group h3 i { width: 8px; height: 8px; border-radius: 50%; background: var(--color-brand); }
 .group h3 i.client { background: #64748b; }
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -315,6 +424,7 @@ onMounted(async () => {
 .end { font-weight: 600; }
 .wait { color: #b45309; }
 .mail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zone-ref { color: #334155; font-weight: 600; }
 .live { color: #047857; font-weight: 700; }
 .live.off { color: #64748b; }
 .tiles a {
@@ -349,15 +459,12 @@ onMounted(async () => {
   }
 
   .head p {
-    max-width: 480px;
-    margin: 10px auto 0;
-    font-size: 15px;
-    line-height: 22px;
+    font-size: 14px;
   }
 
   .toolbar {
     display: grid;
-    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    grid-template-columns: auto 1fr;
     gap: 16px;
     align-items: end;
     margin-bottom: 8px;
@@ -365,75 +472,20 @@ onMounted(async () => {
 
   .segment {
     margin-bottom: 0;
-  }
-
-  .segment button {
-    min-height: 40px;
-    font-size: 13px;
+    min-width: 280px;
   }
 
   .seek {
-    margin-bottom: 14px;
-  }
-
-  .seek span {
-    font-size: 13px;
-  }
-
-  .rule {
-    padding: 18px 20px;
-    margin-bottom: 20px;
-  }
-
-  .rule h3 {
-    font-size: 16px;
-  }
-
-  .pills {
-    flex-wrap: wrap;
-    overflow: visible;
-    gap: 10px;
-    margin-top: 14px;
-  }
-
-  .pills button {
-    min-height: 40px;
-    padding: 0 16px;
-    font-size: 13px;
-  }
-
-  .group {
-    margin-bottom: 22px;
-  }
-
-  .group h3 {
-    font-size: 14px;
+    margin-bottom: 0;
   }
 
   .tiles {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: 14px;
   }
 
-  .tiles article {
-    padding: 16px 18px;
-  }
-
-  .tiles h4 {
-    font-size: 16px;
-  }
-
-  .tiles p {
-    font-size: 12px;
-  }
-
-  .tiles a {
-    min-height: 40px;
-    font-size: 13px;
-  }
-
-  .empty {
-    font-size: 14px;
+  .zone-block {
+    padding: 16px;
   }
 }
 </style>

@@ -11,6 +11,7 @@ const router = createRouter({
     { path: '/login', name: 'login', component: () => import('@/portal/views/LoginView.vue') },
     { path: '/recuperar-contrasena', name: 'forgot-password', component: () => import('@/portal/views/ForgotPasswordView.vue') },
     { path: '/restablecer-contrasena', name: 'reset-password', component: () => import('@/portal/views/ResetPasswordView.vue') },
+    { path: '/verificar-correo', name: 'verify-email', component: () => import('@/portal/views/VerifyEmailView.vue') },
     { path: '/registro/cliente/beneficios', name: 'client-benefits', component: () => import('@/portal/views/ClientBenefitsView.vue') },
     { path: '/registro/empresario/beneficios', name: 'empresario-benefits', component: () => import('@/portal/views/EmpresarioPlansView.vue') },
     { path: '/afiliacion/planes', name: 'empresario-plans', component: () => import('@/portal/views/EmpresarioPlansView.vue') },
@@ -208,6 +209,12 @@ const router = createRouter({
       path: '/panel/auditoria/:id',
       name: 'audit-detail',
       component: () => import('@/portal/views/AuditDetailView.vue'),
+      meta: { requiresAuth: true, roles: ['ADMIN'] },
+    },
+    {
+      path: '/panel/autorizaciones',
+      name: 'consent-audit',
+      component: () => import('@/portal/views/ConsentAuditView.vue'),
       meta: { requiresAuth: true, roles: ['ADMIN'] },
     },
     {

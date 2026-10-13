@@ -7,6 +7,8 @@ import { apiError, http } from '../api'
 import { usePortalAuth } from '../auth'
 import type { DailyOffer, Market, Rubro, Zone } from '../types'
 import { clearZone, readZone, saveZone, zoneRevision, type ChosenZone } from '../zone'
+import { isLimaMetroGeo, type LocationRegion } from '../limaMetro'
+import { useActionNotice } from '../useActionNotice'
 
 const router = useRouter()
 const auth = usePortalAuth()
@@ -16,20 +18,41 @@ const groupName = ref('Mercados y Zonas Comerciales')
 const markets = ref<Market[]>([])
 const zones = ref<Zone[]>([])
 const chosen = ref<ChosenZone | null>(readZone())
+const region = ref<LocationRegion>('lima')
+const departmentId = ref(0)
+const provinceId = ref(0)
 const districtId = ref(0)
 const zoneId = ref(0)
 const error = ref('')
 const zoneHint = ref('')
+const { notice: zoneNotice, showNotice: showZoneNotice } = useActionNotice()
 const search = ref('')
 const tracks = new Map<string, HTMLElement>()
 const canSlide = ref<Record<string, boolean>>({})
 const placeCardEl = ref<HTMLElement | null>(null)
 
 function askForZone() {
-  zoneHint.value = 'Elige Distrito y Zona para continuar'
+  zoneHint.value =
+    region.value === 'lima'
+      ? 'Elige Distrito y Zona para continuar'
+      : 'Elige Departamento, Provincia, Distrito y Zona para continuar'
   nextTick(() => {
     placeCardEl.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   })
+}
+
+function resetPlaceFields() {
+  departmentId.value = 0
+  provinceId.value = 0
+  districtId.value = 0
+  zoneId.value = 0
+  zoneHint.value = ''
+}
+
+function setRegion(next: LocationRegion) {
+  if (region.value === next) return
+  region.value = next
+  resetPlaceFields()
 }
 
 function updateSlide(key: string) {
@@ -114,26 +137,70 @@ function orderOffer(offer: DailyOffer, event?: Event) {
   router.push(target)
 }
 
+const regionZones = computed(() =>
+  zones.value.filter((zone) => {
+    const metro = isLimaMetroGeo(zone)
+    return region.value === 'lima' ? metro : !metro
+  }),
+)
+
+const departments = computed(() => {
+  const map = new Map<number, { id: number; name: string }>()
+  for (const zone of regionZones.value) {
+    const department = zone.district?.province?.department
+    if (!department || map.has(department.id)) continue
+    map.set(department.id, { id: department.id, name: department.name })
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+})
+
+const provinces = computed(() => {
+  const map = new Map<number, { id: number; name: string; departmentId: number }>()
+  for (const zone of regionZones.value) {
+    const province = zone.district?.province
+    const department = province?.department
+    if (!province || !department || department.id !== departmentId.value || map.has(province.id)) continue
+    map.set(province.id, { id: province.id, name: province.name, departmentId: department.id })
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+})
+
 const districts = computed(() => {
   const map = new Map<number, { id: number; name: string; provinceName: string; departmentName: string }>()
-  for (const zone of zones.value) {
+  for (const zone of regionZones.value) {
     const district = zone.district
+    const province = district?.province
+    const department = province?.department
     if (!district || map.has(district.id)) continue
+    if (region.value === 'otros') {
+      if (!department || department.id !== departmentId.value) continue
+      if (!province || province.id !== provinceId.value) continue
+    }
     map.set(district.id, {
       id: district.id,
       name: district.name,
-      provinceName: district.province?.name || '',
-      departmentName: district.province?.department?.name || '',
+      provinceName: province?.name || '',
+      departmentName: department?.name || '',
     })
   }
   return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
 })
 
 const zoneOptions = computed(() =>
-  zones.value
+  regionZones.value
     .filter((zone) => zone.districtId === districtId.value)
     .sort((a, b) => a.name.localeCompare(b.name, 'es')),
 )
+
+watch(departmentId, () => {
+  if (!provinces.value.some((item) => item.id === provinceId.value)) provinceId.value = 0
+  zoneHint.value = ''
+})
+
+watch(provinceId, () => {
+  if (!districts.value.some((item) => item.id === districtId.value)) districtId.value = 0
+  zoneHint.value = ''
+})
 
 watch(districtId, () => {
   if (!zoneOptions.value.some((zone) => zone.id === zoneId.value)) zoneId.value = 0
@@ -202,6 +269,7 @@ function enterZone() {
   search.value = ''
   error.value = ''
   zoneHint.value = ''
+  showZoneNotice(`Ubicación registrada: ${district.name} · ${zone.name}.`)
   loadCatalog().catch((err) => {
     error.value = apiError(err)
   })
@@ -210,8 +278,7 @@ function enterZone() {
 function changeZone() {
   clearZone()
   chosen.value = null
-  districtId.value = 0
-  zoneId.value = 0
+  resetPlaceFields()
   rubros.value = []
   markets.value = []
   search.value = ''
@@ -236,8 +303,7 @@ onUnmounted(() => window.removeEventListener('resize', refreshSlides))
 watch(zoneRevision, () => {
   if (readZone()) return
   chosen.value = null
-  districtId.value = 0
-  zoneId.value = 0
+  resetPlaceFields()
   rubros.value = []
   markets.value = []
   search.value = ''
@@ -262,25 +328,75 @@ watch([previewRubros, visibleRubros, visibleMarkets], async () => {
       <form v-else ref="placeCardEl" class="place-card" @submit.prevent="enterZone">
         <div class="place-heading">
           <span class="pin" aria-hidden="true" />
-          <h3>Elige tu ubicación</h3>
+          <div>
+            <h3>Elige tu ubicación</h3>
+            <p>Comercios verificados a tu alrededor</p>
+          </div>
+        </div>
+        <div class="region-tabs" role="tablist" aria-label="Ámbito de ubicación">
+          <button
+            type="button"
+            role="tab"
+            :class="{ on: region === 'lima' }"
+            :aria-selected="region === 'lima'"
+            @click="setRegion('lima')"
+          >
+            Lima Metropolitana
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :class="{ on: region === 'otros' }"
+            :aria-selected="region === 'otros'"
+            @click="setRegion('otros')"
+          >
+            Otros Dptos.
+          </button>
         </div>
         <p v-if="zoneHint" class="zone-hint" role="status">{{ zoneHint }}</p>
-        <label class="field">
-          <span>Distrito</span>
-          <select v-model.number="districtId" required>
-            <option :value="0">Elige el distrito</option>
-            <option v-for="district in districts" :key="district.id" :value="district.id">
-              {{ district.name }}<template v-if="district.provinceName"> · {{ district.provinceName }}</template>
-            </option>
-          </select>
-        </label>
-        <label class="field">
-          <span>Zona</span>
-          <select v-model.number="zoneId" required :disabled="!districtId">
-            <option :value="0">Elige la zona</option>
-            <option v-for="zone in zoneOptions" :key="zone.id" :value="zone.id">{{ zone.name }}</option>
-          </select>
-        </label>
+        <p v-else-if="!regionZones.length" class="muted place-note">
+          {{ region === 'lima' ? 'Todavía no hay zonas en Lima Metropolitana.' : 'Todavía no hay zonas en otros departamentos.' }}
+        </p>
+        <template v-else>
+          <template v-if="region === 'otros'">
+            <label class="field">
+              <span>Departamento</span>
+              <select v-model.number="departmentId" required>
+                <option :value="0">Elige el departamento</option>
+                <option v-for="item in departments" :key="item.id" :value="item.id">{{ item.name }}</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Provincia</span>
+              <select v-model.number="provinceId" required :disabled="!departmentId">
+                <option :value="0">Elige la provincia</option>
+                <option v-for="item in provinces" :key="item.id" :value="item.id">{{ item.name }}</option>
+              </select>
+            </label>
+          </template>
+          <label class="field">
+            <span>Distrito</span>
+            <select
+              v-model.number="districtId"
+              required
+              :disabled="region === 'otros' && (!departmentId || !provinceId)"
+            >
+              <option :value="0">Elige el distrito</option>
+              <option v-for="district in districts" :key="district.id" :value="district.id">
+                {{ district.name }}
+                <template v-if="region === 'lima' && district.provinceName"> · {{ district.provinceName }}</template>
+              </option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Zona</span>
+            <select v-model.number="zoneId" required :disabled="!districtId">
+              <option :value="0">Elige la zona</option>
+              <option v-for="zone in zoneOptions" :key="zone.id" :value="zone.id">{{ zone.name }}</option>
+            </select>
+          </label>
+        </template>
+        <p v-if="zoneNotice" class="action-ok" role="status">{{ zoneNotice }}</p>
         <button class="btn accept" type="submit" :disabled="!zoneId">Aceptar</button>
       </form>
       <section v-for="rubro in previewRubros" :key="rubro.id" class="rail">
@@ -443,6 +559,40 @@ watch([previewRubros, visibleRubros, visibleMarkets], async () => {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #1e293b;
+}
+
+.place-heading p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.region-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.region-tabs button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: #e8eef5;
+  color: #0f172a;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.region-tabs button.on {
+  background: #fff;
+  color: var(--color-brand);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  outline: 1px solid rgba(226, 18, 33, 0.25);
 }
 
 .zone-hint {

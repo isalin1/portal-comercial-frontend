@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="faviconPinGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E21221"/>
+      <stop offset="100%" stop-color="#991B1B"/>
+    </linearGradient>
+  </defs>
+  <!-- Contenedor transparente centrado -->
+  <!-- Isotipo: Pin de ubicación centrado geométricamente -->
+  <g transform="translate(18, 6)">
+    <!-- Pin exterior -->
+    <path d="M46 8 C22 8, 4 26, 4 50 C4 78, 41 116, 46 121 C51 116, 88 78, 88 50 C88 26, 70 8, 46 8 Z" fill="url(#faviconPinGrad)"/>
+    <!-- Círculo interior blanco -->
+    <circle cx="46" cy="50" r="30" fill="#FFFFFF"/>
+    <!-- V en negro grafito (#0F172A) con separación física limpia -->
+    <path d="M22 37 L32 62 C32.7 63.8, 34.7 63.8, 35.4 62 L45 37" fill="none" stroke="#0F172A" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- L en rojo corporativo (#E21221) separada a la derecha -->
+    <path d="M50 34 V61 H65" fill="none" stroke="#E21221" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

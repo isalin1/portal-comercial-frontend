@@ -6,6 +6,7 @@ import RejectionNote from '../components/RejectionNote.vue'
 import { apiError, http } from '../api'
 import { dismissRejection } from '../publication'
 import { usePortalAuth } from '../auth'
+import { isLimaMetropolitana, type LocationRegion } from '../limaMetro'
 import type { Business, GeoItem, PointSale } from '../types'
 
 const auth = usePortalAuth()
@@ -21,6 +22,7 @@ const businesses = ref<Business[]>([])
 const departments = ref<GeoItem[]>([])
 const provinces = ref<GeoItem[]>([])
 const districts = ref<GeoItem[]>([])
+const region = ref<LocationRegion>('lima')
 const departmentId = ref(0)
 const provinceId = ref(0)
 const weekDays = [
@@ -53,14 +55,78 @@ const professionals = ref<{ id: number; name: string; phone: string | null; agen
 const person = ref({ name: '', phone: '' })
 const personMessage = ref('')
 
+function departmentName(id: number) {
+  return departments.value.find((item) => item.id === id)?.name || ''
+}
+
+function provinceOf(id: number) {
+  return provinces.value.find((item) => item.id === id)
+}
+
+function isMetroProvince(province: GeoItem) {
+  return isLimaMetropolitana(departmentName(province.departmentId || 0), province.name)
+}
+
+function syncRegionFromSelection() {
+  const province = provinceOf(provinceId.value)
+  if (!province) return
+  region.value = isMetroProvince(province) ? 'lima' : 'otros'
+}
+
+function setRegion(next: LocationRegion) {
+  if (zoneLocked.value || region.value === next) return
+  region.value = next
+  departmentId.value = 0
+  provinceId.value = 0
+  form.value.districtId = 0
+}
+
+const departmentOptions = computed(() => {
+  if (region.value === 'lima') {
+    return departments.value.filter((department) =>
+      provinces.value.some(
+        (province) => province.departmentId === department.id && isMetroProvince(province),
+      ),
+    )
+  }
+  return departments.value.filter((department) =>
+    provinces.value.some(
+      (province) => province.departmentId === department.id && !isMetroProvince(province),
+    ),
+  )
+})
+
 const provinceOptions = computed(() =>
-  provinces.value.filter((item) => item.departmentId === departmentId.value),
+  provinces.value.filter((item) => {
+    if (item.departmentId !== departmentId.value) return false
+    return region.value === 'lima' ? isMetroProvince(item) : !isMetroProvince(item)
+  }),
 )
-const districtOptions = computed(() =>
-  districts.value.filter((item) => item.provinceId === provinceId.value),
-)
+
+const districtOptions = computed(() => {
+  if (region.value === 'lima') {
+    const metroProvinceIds = new Set(
+      provinces.value.filter((item) => isMetroProvince(item)).map((item) => item.id),
+    )
+    return districts.value
+      .filter((item) => metroProvinceIds.has(item.provinceId || 0))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+  }
+  return districts.value.filter((item) => item.provinceId === provinceId.value)
+})
+
 const selectedBusiness = computed(() => businesses.value.find((item) => item.id === form.value.businessId))
 const zoneLocked = computed(() => Boolean(selectedBusiness.value?.zone))
+
+function applyDistrictParents(districtId: number) {
+  const district = districts.value.find((item) => item.id === districtId)
+  if (!district) return
+  const province = provinceOf(district.provinceId || 0)
+  if (!province) return
+  departmentId.value = province.departmentId || 0
+  provinceId.value = province.id
+  syncRegionFromSelection()
+}
 
 function applyZone() {
   const district = selectedBusiness.value?.zone?.district
@@ -69,11 +135,35 @@ function applyZone() {
   departmentId.value = province.departmentId || province.department?.id || 0
   provinceId.value = district.provinceId || province.id
   form.value.districtId = district.id
+  syncRegionFromSelection()
 }
 
 watch(() => form.value.businessId, () => {
   applyZone()
   loadProfessionals()
+})
+
+watch(
+  () => form.value.districtId,
+  (id) => {
+    if (!id || zoneLocked.value) return
+    if (region.value === 'lima') applyDistrictParents(id)
+  },
+)
+
+watch(departmentId, () => {
+  if (zoneLocked.value || region.value === 'lima') return
+  if (!provinceOptions.value.some((item) => item.id === provinceId.value)) {
+    provinceId.value = 0
+    form.value.districtId = 0
+  }
+})
+
+watch(provinceId, () => {
+  if (zoneLocked.value || region.value === 'lima') return
+  if (!districtOptions.value.some((item) => item.id === form.value.districtId)) {
+    form.value.districtId = 0
+  }
 })
 
 async function loadProfessionals() {
@@ -144,8 +234,10 @@ onMounted(async () => {
   if (!editing) {
     applyZone()
     if (!zoneLocked.value) {
-      const junin = departments.value.find((item) => item.name.toLowerCase().includes('jun'))
-      departmentId.value = junin?.id || departments.value[0]?.id || 0
+      region.value = 'lima'
+      departmentId.value = 0
+      provinceId.value = 0
+      form.value.districtId = 0
     }
     return
   }
@@ -169,6 +261,7 @@ onMounted(async () => {
   openDays.value = point.openDays ? point.openDays.split(',').map(Number) : []
   provinceId.value = point.address?.district?.provinceId || 0
   departmentId.value = point.address?.district?.province?.departmentId || 0
+  syncRegionFromSelection()
   applyZone()
   await loadProfessionals()
   } catch (err) {
@@ -252,28 +345,68 @@ async function submit() {
       <section class="group">
         <h3>Ubicación y cobertura</h3>
         <p v-if="zoneLocked" class="notice">El departamento, la provincia y el distrito corresponden a la zona del negocio.</p>
-        <label class="line">
-          <span>Departamento</span>
-          <select v-model.number="departmentId" :disabled="zoneLocked">
-            <option v-for="item in departments" :key="item.id" :value="item.id">{{ item.name }}</option>
-          </select>
-        </label>
-        <label class="line">
-          <span>Provincia</span>
-          <select v-model.number="provinceId" :disabled="zoneLocked">
-            <option v-for="item in provinceOptions" :key="item.id" :value="item.id">{{ item.name }}</option>
-          </select>
-        </label>
-        <label class="line">
-          <span>Distrito</span>
-          <select v-model.number="form.districtId" required :disabled="zoneLocked">
-            <option v-for="item in districtOptions" :key="item.id" :value="item.id">{{ item.name }}</option>
-          </select>
-        </label>
-        <label class="line">
-          <span>Urbanización / zona</span>
-          <input v-model="form.urbanZone" placeholder="Ej. Valdiviezo / Salamanca" />
-        </label>
+        <div class="region-tabs" role="tablist" aria-label="Ámbito de ubicación">
+          <button
+            type="button"
+            role="tab"
+            :class="{ on: region === 'lima' }"
+            :aria-selected="region === 'lima'"
+            :disabled="zoneLocked"
+            @click="setRegion('lima')"
+          >
+            Lima Metropolitana
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :class="{ on: region === 'otros' }"
+            :aria-selected="region === 'otros'"
+            :disabled="zoneLocked"
+            @click="setRegion('otros')"
+          >
+            Otros Dptos.
+          </button>
+        </div>
+        <template v-if="region === 'lima'">
+          <label class="line">
+            <span>Distrito</span>
+            <select v-model.number="form.districtId" required :disabled="zoneLocked">
+              <option :value="0">Elige el distrito</option>
+              <option v-for="item in districtOptions" :key="item.id" :value="item.id">{{ item.name }}</option>
+            </select>
+          </label>
+          <label class="line">
+            <span>Urbanización / zona</span>
+            <input v-model="form.urbanZone" placeholder="Ej. Valdiviezo / Salamanca" />
+          </label>
+        </template>
+        <template v-else>
+          <label class="line">
+            <span>Departamento</span>
+            <select v-model.number="departmentId" required :disabled="zoneLocked">
+              <option :value="0">Elige el departamento</option>
+              <option v-for="item in departmentOptions" :key="item.id" :value="item.id">{{ item.name }}</option>
+            </select>
+          </label>
+          <label class="line">
+            <span>Provincia</span>
+            <select v-model.number="provinceId" required :disabled="zoneLocked || !departmentId">
+              <option :value="0">Elige la provincia</option>
+              <option v-for="item in provinceOptions" :key="item.id" :value="item.id">{{ item.name }}</option>
+            </select>
+          </label>
+          <label class="line">
+            <span>Distrito</span>
+            <select v-model.number="form.districtId" required :disabled="zoneLocked || !provinceId">
+              <option :value="0">Elige el distrito</option>
+              <option v-for="item in districtOptions" :key="item.id" :value="item.id">{{ item.name }}</option>
+            </select>
+          </label>
+          <label class="line">
+            <span>Zona</span>
+            <input v-model="form.urbanZone" placeholder="Ej. Centro / Urbanización Norte" />
+          </label>
+        </template>
         <label class="line">
           <span>Dirección</span>
           <input v-model="form.street" required placeholder="Ej. Av. Grau 148" />
@@ -441,6 +574,37 @@ async function submit() {
   background: #fff5f5;
   color: var(--color-brand);
   font-size: 12px;
+}
+
+.region-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.region-tabs button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: #e8eef5;
+  color: #0f172a;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.region-tabs button.on {
+  background: #fff;
+  color: var(--color-brand);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  outline: 1px solid rgba(226, 18, 33, 0.25);
+}
+
+.region-tabs button:disabled {
+  opacity: 0.7;
+  cursor: default;
 }
 
 .week {

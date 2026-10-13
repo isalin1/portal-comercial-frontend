@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ScreenFrame from '../components/ScreenFrame.vue'
 import { apiError, apiErrorCode, http } from '../api'
 import { usePortalAuth } from '../auth'
+import { isLimaMetroGeo, type LocationRegion } from '../limaMetro'
 import { whatsappChatUrl } from '../whatsapp'
-import type { UserType } from '../types'
+import type { UserType, Zone } from '../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -35,6 +36,96 @@ const upgradePrompt = ref(false)
 const isFreePlan = computed(() => tipo.value === 'EMPRESARIO' && route.query.plan === 'free')
 const wantsWhatsApp = computed(() => tipo.value === 'EMPRESARIO' && !isFreePlan.value)
 
+const zones = ref<Zone[]>([])
+const region = ref<LocationRegion | null>(null)
+const departmentId = ref(0)
+const provinceId = ref(0)
+const districtId = ref(0)
+const referenceZoneId = ref(0)
+
+const regionZones = computed(() =>
+  zones.value.filter((zone) => {
+    if (!region.value) return false
+    const metro = isLimaMetroGeo(zone)
+    return region.value === 'lima' ? metro : !metro
+  }),
+)
+
+const departments = computed(() => {
+  const map = new Map<number, { id: number; name: string }>()
+  for (const zone of regionZones.value) {
+    const department = zone.district?.province?.department
+    if (!department || map.has(department.id)) continue
+    map.set(department.id, { id: department.id, name: department.name })
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+})
+
+const provinces = computed(() => {
+  const map = new Map<number, { id: number; name: string }>()
+  for (const zone of regionZones.value) {
+    const province = zone.district?.province
+    const department = province?.department
+    if (!province || !department || department.id !== departmentId.value || map.has(province.id)) continue
+    map.set(province.id, { id: province.id, name: province.name })
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+})
+
+const zoneDistricts = computed(() => {
+  const map = new Map<number, { id: number; name: string; provinceName: string }>()
+  for (const zone of regionZones.value) {
+    const district = zone.district
+    const province = district?.province
+    const department = province?.department
+    if (!district || map.has(district.id)) continue
+    if (region.value === 'otros') {
+      if (!department || department.id !== departmentId.value) continue
+      if (!province || province.id !== provinceId.value) continue
+    }
+    map.set(district.id, {
+      id: district.id,
+      name: district.name,
+      provinceName: province?.name || '',
+    })
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+})
+
+const zonesOfDistrict = computed(() =>
+  regionZones.value
+    .filter((zone) => zone.districtId === districtId.value)
+    .sort((a, b) => a.name.localeCompare(b.name, 'es')),
+)
+
+function setRegion(value: LocationRegion) {
+  region.value = value
+  departmentId.value = 0
+  provinceId.value = 0
+  districtId.value = 0
+  referenceZoneId.value = 0
+}
+
+function clearRegion() {
+  region.value = null
+  departmentId.value = 0
+  provinceId.value = 0
+  districtId.value = 0
+  referenceZoneId.value = 0
+}
+
+watch(departmentId, () => {
+  if (!provinces.value.some((item) => item.id === provinceId.value)) provinceId.value = 0
+})
+
+watch(provinceId, () => {
+  if (!zoneDistricts.value.some((item) => item.id === districtId.value)) districtId.value = 0
+})
+
+watch(districtId, () => {
+  if (!zonesOfDistrict.value.some((zone) => zone.id === referenceZoneId.value)) referenceZoneId.value = 0
+})
+
 function salesDigits() {
   let value = salesPhone.value.replace(/\D/g, '')
   if (value.startsWith('00')) value = value.slice(2)
@@ -47,12 +138,20 @@ function buildWhatsAppUrl(text: string) {
 }
 
 onMounted(async () => {
-  if (tipo.value !== 'EMPRESARIO') return
+  if (tipo.value === 'EMPRESARIO') {
+    try {
+      const { data } = await http.get<{ salesWhatsapp: string }>('/settings')
+      if (data.salesWhatsapp) salesPhone.value = data.salesWhatsapp
+    } catch {
+      // Se usa el número inicial.
+    }
+    return
+  }
   try {
-    const { data } = await http.get<{ salesWhatsapp: string }>('/settings')
-    if (data.salesWhatsapp) salesPhone.value = data.salesWhatsapp
+    const { data } = await http.get<Zone[]>('/zones')
+    zones.value = data
   } catch {
-    // Se usa el número inicial.
+    zones.value = []
   }
 })
 
@@ -65,6 +164,7 @@ async function goLogin(tipoLogin: 'cliente' | 'empresario', note?: string) {
 
 async function finishEmpresarioFlow(resultMessage: string) {
   message.value = resultMessage
+  sessionStorage.setItem('portal_login_note', resultMessage)
   const name = `${form.value.firstName} ${form.value.lastName}`.trim()
   const plan = String(route.query.afiliacion || '').trim() || 'elegido'
   const text = `Hola, soy ${name}. Deseo comprar un Plan de Afiliacion. Por favor, confirmarme el costo del Plan ${plan} y el numero al que debo hacer el pago`
@@ -81,6 +181,10 @@ async function submit(confirmUpgrade = false) {
     error.value = 'Las contraseñas no coinciden'
     return
   }
+  if (tipo.value === 'CLIENTE' && !referenceZoneId.value) {
+    error.value = 'Elige tu zona de referencia'
+    return
+  }
   loading.value = true
   const email = form.value.email
   const password = form.value.password
@@ -94,10 +198,12 @@ async function submit(confirmUpgrade = false) {
       userType: tipo.value,
       ...(isFreePlan.value ? { plan: 'free' } : {}),
       ...(confirmUpgrade ? { confirmUpgrade: true } : {}),
+      ...(tipo.value === 'CLIENTE' ? { referenceZoneId: referenceZoneId.value } : {}),
     })
     if (tipo.value === 'CLIENTE') {
-      await auth.login(email, password)
-      await router.push({ name: 'terms', query: { next: '/' } })
+      sessionStorage.setItem('portal_login_note', result.message)
+      auth.holdAcceptance({ email, password })
+      await router.push({ name: 'terms', query: { next: '/login?tipo=cliente' } })
       return
     }
     await finishEmpresarioFlow(result.message)
@@ -190,6 +296,65 @@ async function declineUpgrade() {
             </span>
           </label>
         </div>
+
+        <section v-if="tipo === 'CLIENTE'" class="zone-box">
+          <h3>Zona de referencia <em>Requerido</em></h3>
+          <p class="zone-note">
+            Es solo referencial, no limita que zonas puedes ver y con que negocios te puedes comunicar
+          </p>
+          <div v-if="!region" class="region-tabs" role="tablist" aria-label="Ámbito de ubicación">
+            <button type="button" role="tab" @click="setRegion('lima')">Lima Metropolitana</button>
+            <button type="button" role="tab" @click="setRegion('otros')">Otros Dptos.</button>
+          </div>
+          <template v-else-if="zones.length">
+            <p class="region-badge">{{ region === 'lima' ? 'Lima Metropolitana' : 'Otros Dptos.' }}</p>
+            <p v-if="!regionZones.length" class="zone-hint">
+              {{ region === 'lima' ? 'Todavía no hay zonas en Lima Metropolitana.' : 'Todavía no hay zonas en otros departamentos.' }}
+            </p>
+            <template v-else>
+              <template v-if="region === 'otros'">
+                <label class="reg-field">
+                  <span>Departamento</span>
+                  <select v-model.number="departmentId" required>
+                    <option :value="0">Elige el departamento</option>
+                    <option v-for="item in departments" :key="item.id" :value="item.id">{{ item.name }}</option>
+                  </select>
+                </label>
+                <label class="reg-field">
+                  <span>Provincia</span>
+                  <select v-model.number="provinceId" required :disabled="!departmentId">
+                    <option :value="0">Elige la provincia</option>
+                    <option v-for="item in provinces" :key="item.id" :value="item.id">{{ item.name }}</option>
+                  </select>
+                </label>
+              </template>
+              <label class="reg-field">
+                <span>Distrito</span>
+                <select
+                  v-model.number="districtId"
+                  required
+                  :disabled="region === 'otros' && (!departmentId || !provinceId)"
+                >
+                  <option :value="0">Elige el distrito</option>
+                  <option v-for="district in zoneDistricts" :key="district.id" :value="district.id">
+                    {{ district.name }}
+                    <template v-if="region === 'lima' && district.provinceName"> · {{ district.provinceName }}</template>
+                  </option>
+                </select>
+              </label>
+              <label class="reg-field">
+                <span>Zona o urbanización</span>
+                <select v-model.number="referenceZoneId" :disabled="!districtId" required>
+                  <option :value="0">Elige la zona</option>
+                  <option v-for="zone in zonesOfDistrict" :key="zone.id" :value="zone.id">{{ zone.name }}</option>
+                </select>
+              </label>
+            </template>
+            <button class="change-region" type="button" @click="clearRegion">Cambiar ámbito</button>
+          </template>
+          <p v-else class="zone-hint">El administrador todavía no registra zonas.</p>
+        </section>
+
         <p class="safe">Tus datos se usan solo para crear tu cuenta de {{ tipo === 'EMPRESARIO' ? 'empresario' : 'cliente' }}.</p>
         <button class="btn go" type="submit" :disabled="loading">{{ loading ? 'Registrando…' : 'Registrarme' }}</button>
       </form>
@@ -251,20 +416,27 @@ async function declineUpgrade() {
   text-transform: uppercase;
 }
 
-.reg-field input {
+.reg-field input,
+.reg-field select {
   width: 100%;
   height: 48px;
   border: 0;
   border-radius: var(--radius-control);
   background: #f0f3ff;
   padding: 0 14px;
+  font: inherit;
   font-size: 14px;
   color: var(--color-ink);
 }
 
-.reg-field input:focus {
+.reg-field input:focus,
+.reg-field select:focus {
   outline: 2px solid var(--color-brand);
   background: #fff;
+}
+
+.reg-field select:disabled {
+  opacity: 0.55;
 }
 
 .dial {
@@ -317,6 +489,87 @@ async function declineUpgrade() {
 
 .secret input {
   padding-right: 72px;
+}
+
+.zone-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-card);
+  background: #fff;
+  box-shadow: var(--shadow-soft);
+}
+
+.zone-box h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.zone-box h3 em {
+  color: var(--color-brand);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.zone-note {
+  margin: 0;
+  color: #5c5e65;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.zone-hint {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.region-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.region-tabs button {
+  min-height: 44px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: #fff;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.region-badge {
+  margin: 0;
+  color: var(--color-brand);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.change-region {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  color: var(--color-brand);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  padding: 0;
 }
 
 .safe {
@@ -439,6 +692,7 @@ async function declineUpgrade() {
   }
 
   .reg-field input,
+  .reg-field select,
   .dial {
     height: 52px;
     font-size: 15px;

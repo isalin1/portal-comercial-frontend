@@ -10,6 +10,7 @@ import { isKgUnit, menuOfferIdsOf, quantityError, type Business, type PointSale 
 import { clientDisplayName, professionalAppointmentWhatsApp, whatsappChatUrl } from '../whatsapp'
 import { trackBusinessOpen } from '../track'
 import { zoneParams } from '../zone'
+import { useActionNotice } from '../useActionNotice'
 
 const OPERATOR_ORDER_KEY = 'portal-operator-order'
 
@@ -40,6 +41,7 @@ const placing = ref(false)
 const trackedOpenId = ref(0)
 const operatorDraft = ref<OperatorDraft | null>(null)
 const orderPayment = ref(0)
+const { notice, showNotice, clearNotice } = useActionNotice()
 const isOperatorOrder = computed(() => route.query.operador === '1' && Boolean(operatorDraft.value))
 
 function readOperatorDraft() {
@@ -257,6 +259,7 @@ function goToPreorder() {
     return
   }
   checkoutStep.value = 'preorder'
+  showNotice('Revisa los datos y confirma tu pedido.')
   scrollToOrder()
 }
 
@@ -408,6 +411,7 @@ function addProduct(descriptionId: number, label: string, unitPrice?: number) {
   const current = cart.value.find((line) => line.descriptionId === descriptionId)
   if (current) current.quantity = (current.quantity || 1) + 1
   else cart.value.push({ kind: 'CARTA', descriptionId, quantity: 1, unitName, unitPrice: price, label })
+  showNotice(current ? 'Cantidad actualizada en tu pedido.' : 'Producto agregado a tu pedido.')
   scrollToOrder()
 }
 
@@ -479,7 +483,10 @@ function syncMenuOrder() {
     unitPrice: Number(offer.price),
     label: `${offer.name} · ${pickedItems.value.map((item) => item.name).join(' + ')}`,
   })
-  if (!needsConfirm) resetMenuDraft()
+  if (!needsConfirm) {
+    resetMenuDraft()
+    showNotice('Menú agregado a tu pedido.')
+  }
 }
 
 function confirmMenu() {
@@ -489,6 +496,7 @@ function confirmMenu() {
   error.value = ''
   menuPickError.value = ''
   resetMenuDraft()
+  showNotice('Menú agregado a tu pedido.')
   scrollToOrder()
 }
 
@@ -547,6 +555,7 @@ function removeLine(index: number) {
 
 async function placeOrder() {
   error.value = ''
+  clearNotice()
   if (checkoutStep.value !== 'preorder') {
     goToPreorder()
     return
@@ -941,6 +950,7 @@ const pickedItems = computed(() =>
                 <input v-model.number="orderPayment" type="number" min="0.01" step="0.01" />
               </label>
 
+              <p v-if="notice" class="action-ok" role="status">{{ notice }}</p>
               <p v-if="error" class="error">{{ error }}</p>
               <button class="btn ghost" type="button" @click="backToCart">Volver al pedido</button>
               <button class="btn go continue" type="button" :disabled="placing || !cart.length" @click="placeOrder">
@@ -1101,6 +1111,7 @@ const pickedItems = computed(() =>
                   <p class="total"><span>Total a pagar</span><b>{{ money(orderTotal) }}</b></p>
                 </div>
 
+                <p v-if="notice" class="action-ok" role="status">{{ notice }}</p>
                 <p v-if="error" class="error">{{ error }}</p>
                 <button class="btn ghost" type="button" @click="keepShopping">Seguir agregando</button>
                 <button
