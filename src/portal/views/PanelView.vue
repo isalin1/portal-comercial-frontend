@@ -18,15 +18,19 @@ const salesWhatsapp = ref('')
 const settingsMessage = ref('')
 const pendingAudit = ref(0)
 const pendingPlanUsers = ref(0)
+const pendingEmails = ref(0)
 
 const adminModules = [
+  { name: 'admin-credentials', label: 'Credenciales' },
   { name: 'audit', label: 'Auditoría de Publicaciones' },
   { name: 'consent-audit', label: 'Auditoría de Autorizaciones' },
   { name: 'catalog', label: 'Rubros y Categorías' },
   { name: 'empresarios', label: 'Usuarios y Estados' },
+  { name: 'email-approvals', label: 'Aprobación de correos' },
   { name: 'plans', label: 'Planes' },
   { name: 'reports', label: 'Reportes' },
   { name: 'zones', label: 'Zonas' },
+  { name: 'market-rubro', label: 'Mercados en el rubro' },
 ] as const
 
 async function saveSalesWhatsapp() {
@@ -86,6 +90,7 @@ const empresarioLinks = computed(() => {
   const links: { name: string; label: string }[] = [
     { name: 'profile', label: 'Mis datos' },
     { name: 'businesses', label: 'Mi negocio' },
+    { name: 'store-hours', label: 'Horarios, Disponibilidad y Delivery' },
     { name: 'services', label: 'Productos/Servicios' },
     { name: 'availability', label: 'Disponibilidad' },
   ]
@@ -162,14 +167,16 @@ async function loadEmpresarioAccount() {
 onMounted(async () => {
   if (auth.userType === 'ADMIN') {
     try {
-      const [{ data }, audit, pendingPlans] = await Promise.all([
+      const [{ data }, audit, pendingPlans, pendingMail] = await Promise.all([
         http.get<{ salesWhatsapp: string }>('/settings'),
         http.get<{ count: number }[]>('/auditoria'),
         http.get<{ count: number }>('/user/pending-plan-count'),
+        http.get<{ id: number }[]>('/user/pendientes-correo'),
       ])
       salesWhatsapp.value = data.salesWhatsapp
       pendingAudit.value = audit.data.reduce((total, row) => total + row.count, 0)
       pendingPlanUsers.value = pendingPlans.data.count || 0
+      pendingEmails.value = pendingMail.data.length
     } catch {
       salesWhatsapp.value = salesWhatsapp.value || '940485657'
     }
@@ -234,6 +241,7 @@ function logout() {
           <span>{{ module.label }}</span>
           <b v-if="module.name === 'audit' && pendingAudit">{{ pendingAudit }} pend.</b>
           <b v-else-if="module.name === 'empresarios' && pendingPlanUsers">{{ pendingPlanUsers }} pend.</b>
+          <b v-else-if="module.name === 'email-approvals' && pendingEmails">{{ pendingEmails }} pend.</b>
         </router-link>
       </section>
       <router-link class="ghost" :to="{ name: 'businesses' }">Mi Negocio</router-link>
@@ -404,10 +412,11 @@ function logout() {
   display: flex;
   align-items: center;
   min-height: 52px;
-  padding: 0 16px;
+  padding: 14px 16px;
   color: var(--color-ink);
   font-size: 16px;
   font-weight: 700;
+  line-height: 1.3;
   text-decoration: none;
 }
 

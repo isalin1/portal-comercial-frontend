@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ScreenFrame from '../components/ScreenFrame.vue'
 import { apiError, http } from '../api'
+import { prepareImage } from '../prepareImage'
 import type { Rubro } from '../types'
 
 const route = useRoute()
@@ -67,11 +68,26 @@ async function startAdd() {
   formEl.value?.scrollIntoView({ block: 'start' })
 }
 
-function onImage(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0] || null
-  imageFile.value = file
-  imageName.value = file?.name || ''
-  if (file) currentImage.value = URL.createObjectURL(file)
+async function onImage(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0] || null
+  imageFile.value = null
+  imageName.value = ''
+  error.value = ''
+  if (!file) {
+    currentImage.value = ''
+    return
+  }
+  try {
+    const ready = await prepareImage(file)
+    imageFile.value = ready
+    imageName.value = ready.name
+    currentImage.value = URL.createObjectURL(ready)
+  } catch (err) {
+    currentImage.value = ''
+    input.value = ''
+    error.value = err instanceof Error ? err.message : 'No se pudo leer la foto'
+  }
 }
 
 function categoryLabel(rubro: Rubro) {
@@ -197,6 +213,7 @@ async function submit() {
         <small>Resolución recomendada: 800x600 px (JPG, PNG o WEBP).</small>
       </div>
       <p class="note">El nombre se muestra en la pantalla principal. La imagen queda guardada en el rubro.</p>
+      <p v-if="error" class="error">{{ error }}</p>
       <button class="save" type="submit" :disabled="saving">{{ saving ? 'Guardando…' : 'Guardar rubro' }}</button>
       <button class="drop" type="button" @click="discard">Descartar cambios</button>
     </form>
@@ -204,6 +221,7 @@ async function submit() {
 </template>
 
 <style scoped>
+.error { margin: 0 0 8px; color: var(--color-brand); font-size: 13px; font-weight: 700; }
 .head { margin-bottom: 16px; text-align: center; }
 .head h2 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
 .head p { margin: 6px 0 0; color: #64748b; font-size: 12px; }

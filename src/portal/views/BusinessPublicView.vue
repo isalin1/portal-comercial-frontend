@@ -124,7 +124,7 @@ const orderable = computed(() => {
 const requiresOperatorPayment = computed(() => Boolean(operatorDraft.value?.requireOrderPayment || business.value?.requireOrderPayment))
 const whatsappLabel = computed(() => {
   if (isProfessional.value) return 'Consulta y agenda tu cita aqui'
-  return orderable.value ? 'Crea tu pedido directamente o por WhatsApp' : 'WhatsApp'
+  return orderable.value ? 'Si deseas, comunícate\ndirectamente por WhatsApp' : 'WhatsApp'
 })
 const authRedirect = computed(() => ({
   name: 'login' as const,
@@ -753,14 +753,17 @@ const pickedItems = computed(() =>
             <p class="muted">{{ point.scheduleLabel || 'Horario no registrado' }}</p>
             <span v-if="point.isOpen === true" class="badge open">Abierto</span>
             <span v-else-if="point.isOpen === false" class="badge off">Cerrado</span>
-            <WhatsAppAccess
-              v-if="point.whatsappUrl"
-              variant="wa-btn"
-              :business-id="business.id"
-              :href="whatsappHref(point)"
-              :label="whatsappLabel"
-            />
-            <p v-else-if="business.showPhone && point.phone">{{ point.phone }}</p>
+            <div v-if="orderable || point.whatsappUrl || (business.showPhone && point.phone)" class="point-actions">
+              <p v-if="orderable" class="order-note">Si el negocio lo permite, crea tu pedido directamente</p>
+              <WhatsAppAccess
+                v-if="point.whatsappUrl"
+                variant="wa-btn"
+                :business-id="business.id"
+                :href="whatsappHref(point)"
+                :label="whatsappLabel"
+              />
+              <p v-else-if="business.showPhone && point.phone">{{ point.phone }}</p>
+            </div>
           </article>
         </div>
         <template v-if="business.publicOffer !== false">
@@ -1235,8 +1238,8 @@ const pickedItems = computed(() =>
 
 .offer-actions {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
 }
 
@@ -1248,11 +1251,65 @@ const pickedItems = computed(() =>
 
 .add-btn {
   flex: 0 0 auto;
-  width: auto !important;
+  align-self: stretch;
+  width: 100% !important;
+  max-width: 100%;
   white-space: nowrap;
   min-height: 36px;
   margin-top: 0 !important;
   padding: 6px 12px !important;
+}
+
+.address-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.address-card p {
+  margin: 0;
+}
+
+.address-card .badge {
+  align-self: flex-start;
+  margin: 0;
+}
+
+.point-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 12px;
+}
+
+.order-note {
+  margin: 0;
+  width: 100%;
+  color: var(--color-ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.point-actions :deep(.wa-access) {
+  width: fit-content;
+  max-width: 100%;
+  align-self: center;
+}
+
+.point-actions :deep(.wa-btn) {
+  width: auto;
+  max-width: 100%;
+  min-height: 0;
+  padding: 8px 14px;
+  border-radius: var(--radius-control);
+  font-size: 13px;
+  line-height: 1.25;
+  white-space: pre-line;
 }
 
 .order-sheet {

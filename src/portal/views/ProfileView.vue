@@ -21,6 +21,10 @@ const form = ref({
 })
 
 onMounted(async () => {
+  if (auth.userType === 'ADMIN') {
+    await router.replace({ name: 'admin-credentials' })
+    return
+  }
   if (!auth.user) return
   try {
     const { data } = await http.get<AccountUser>(`/user/${auth.user.id}`)

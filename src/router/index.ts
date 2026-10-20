@@ -34,6 +34,7 @@ const router = createRouter({
     { path: '/cuenta', name: 'account', component: () => import('@/portal/views/AccountView.vue'), meta: { requiresAuth: true } },
     { path: '/cuenta/pedidos/:id', name: 'client-order', component: () => import('@/portal/views/ClientOrderView.vue'), meta: { requiresAuth: true, roles: ['CLIENTE', 'EMPRESARIO'] } },
     { path: '/categorias/:id', name: 'category', component: () => import('@/portal/views/CategoryView.vue') },
+    { path: '/mercados/:marketId/categorias/:categoryId', name: 'market-category', component: () => import('@/portal/views/CategoryView.vue') },
     { path: '/mercados/:id', name: 'market', component: () => import('@/portal/views/MarketView.vue') },
     { path: '/negocios/:id', name: 'business', component: () => import('@/portal/views/BusinessPublicView.vue') },
     { path: '/negocios/:id/carta', name: 'menu', component: () => import('@/portal/views/MenuView.vue') },
@@ -72,6 +73,12 @@ const router = createRouter({
       name: 'agenda-board',
       component: () => import('@/portal/views/AgendaBoardView.vue'),
       meta: { requiresAuth: true, roles: ['EMPRESARIO', 'ADMIN'] },
+    },
+    {
+      path: '/panel/credenciales',
+      name: 'admin-credentials',
+      component: () => import('@/portal/views/AdminCredentialsView.vue'),
+      meta: { requiresAuth: true, roles: ['ADMIN'] },
     },
     {
       path: '/panel/datos',
@@ -113,6 +120,12 @@ const router = createRouter({
       path: '/panel/puntos/:id',
       name: 'point-edit',
       component: () => import('@/portal/views/PointFormView.vue'),
+      meta: { requiresAuth: true, roles: ['EMPRESARIO', 'ADMIN'] },
+    },
+    {
+      path: '/panel/horarios',
+      name: 'store-hours',
+      component: () => import('@/portal/views/StoreHoursView.vue'),
       meta: { requiresAuth: true, roles: ['EMPRESARIO', 'ADMIN'] },
     },
     {
@@ -224,6 +237,12 @@ const router = createRouter({
       meta: { requiresAuth: true, roles: ['ADMIN'] },
     },
     {
+      path: '/panel/mercados-rubro',
+      name: 'market-rubro',
+      component: () => import('@/portal/views/MarketRubroView.vue'),
+      meta: { requiresAuth: true, roles: ['ADMIN'] },
+    },
+    {
       path: '/panel/planes',
       name: 'plans',
       component: () => import('@/portal/views/PlansView.vue'),
@@ -245,6 +264,12 @@ const router = createRouter({
       path: '/panel/reportes/whatsapp-dia',
       name: 'report-whatsapp-day',
       component: () => import('@/portal/views/ReportWhatsAppDayView.vue'),
+      meta: { requiresAuth: true, roles: ['ADMIN'] },
+    },
+    {
+      path: '/panel/correos',
+      name: 'email-approvals',
+      component: () => import('@/portal/views/EmailApprovalView.vue'),
       meta: { requiresAuth: true, roles: ['ADMIN'] },
     },
     {
@@ -281,7 +306,7 @@ router.beforeEach(async (to) => {
   if (roles && !roles.includes(auth.userType || '')) {
     return { name: 'home' }
   }
-  const needsZone = ['category', 'market', 'business', 'menu'].includes(String(to.name))
+  const needsZone = ['category', 'market', 'market-category', 'business', 'menu'].includes(String(to.name))
   if (needsZone && !readZone()) return { name: 'home' }
   return true
 })

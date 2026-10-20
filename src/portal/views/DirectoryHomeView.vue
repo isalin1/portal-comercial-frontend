@@ -219,6 +219,20 @@ const visibleMarkets = computed(() => {
 
 const showMarkets = computed(() => visibleMarkets.value.length > 0)
 
+function isCarnesRubro(name: string) {
+  const value = normalize(name)
+  return value.includes('carnes') && value.includes('pollo') && value.includes('pescad')
+}
+
+function withCarnesLast(list: Rubro[]) {
+  return [...list].sort((a, b) => {
+    const aLast = isCarnesRubro(a.name)
+    const bLast = isCarnesRubro(b.name)
+    if (aLast !== bLast) return aLast ? 1 : -1
+    return a.name.localeCompare(b.name, 'es')
+  })
+}
+
 const visibleRubros = computed(() => {
   const query = normalize(search.value.trim())
   if (!query) return rubros.value
@@ -247,7 +261,7 @@ async function loadCatalog() {
     http.get<Rubro[]>('/public/rubros', { params }),
     http.get<{ name: string; markets: Market[] }>('/public/markets', { params }),
   ])
-  rubros.value = rubroRes.data
+  rubros.value = withCarnesLast(rubroRes.data)
   groupName.value = marketRes.data.name
   markets.value = marketRes.data.markets
 }
@@ -289,7 +303,7 @@ onMounted(async () => {
   try {
     const rubroPromise = http.get<Rubro[]>('/public/rubros')
     await loadZones()
-    previewRubros.value = (await rubroPromise).data
+    previewRubros.value = withCarnesLast((await rubroPromise).data)
     if (chosen.value) await loadCatalog()
   } catch (err) {
     error.value = apiError(err)
@@ -708,7 +722,7 @@ watch([previewRubros, visibleRubros, visibleMarkets], async () => {
 .rubro-head {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   margin-bottom: 10px;
 }
@@ -716,16 +730,21 @@ watch([previewRubros, visibleRubros, visibleMarkets], async () => {
 .rail-head {
   padding: 0 16px;
   margin-bottom: 8px;
-  align-items: baseline;
 }
 
 .rail-head h3,
 .rubro-head h3 {
+  min-width: 0;
   margin: 0;
   font-size: 14px;
   font-weight: 800;
+  line-height: 1.25;
   letter-spacing: -0.01em;
   color: #0f172a;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .rubro-badge {
@@ -814,10 +833,12 @@ watch([previewRubros, visibleRubros, visibleMarkets], async () => {
   padding: 10px;
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.3;
   color: #1e293b;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .rubro-block {
@@ -1025,10 +1046,12 @@ watch([previewRubros, visibleRubros, visibleMarkets], async () => {
   text-align: center;
   font-size: 11px;
   font-weight: 700;
+  line-height: 1.3;
   color: #1e293b;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 :deep(.entry-actions) {

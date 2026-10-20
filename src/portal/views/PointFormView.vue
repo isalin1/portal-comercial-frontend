@@ -25,15 +25,6 @@ const districts = ref<GeoItem[]>([])
 const region = ref<LocationRegion>('lima')
 const departmentId = ref(0)
 const provinceId = ref(0)
-const weekDays = [
-  { id: 1, label: 'Lun' },
-  { id: 2, label: 'Mar' },
-  { id: 3, label: 'Mié' },
-  { id: 4, label: 'Jue' },
-  { id: 5, label: 'Vie' },
-  { id: 6, label: 'Sáb' },
-  { id: 0, label: 'Dom' },
-]
 
 const form = ref({
   name: '',
@@ -43,12 +34,7 @@ const form = ref({
   street: '',
   urbanZone: '',
   reference: '',
-  opensAt: '09:00',
-  closesAt: '21:00',
-  chargesDelivery: false,
-  deliveryFee: 0,
 })
-const openDays = ref<number[]>([1, 2, 3, 4, 5, 6])
 const showProfessionals = ref(false)
 const maxProfessionals = ref(1)
 const professionals = ref<{ id: number; name: string; phone: string | null; agendaControl: boolean }[]>([])
@@ -253,12 +239,7 @@ onMounted(async () => {
     street: point.address?.street || '',
     urbanZone: point.address?.urbanZone || '',
     reference: point.address?.reference || '',
-    opensAt: point.opensAt || '',
-    closesAt: point.closesAt || '',
-    chargesDelivery: Boolean(point.chargesDelivery),
-    deliveryFee: Number(point.deliveryFee || 0),
   }
-  openDays.value = point.openDays ? point.openDays.split(',').map(Number) : []
   provinceId.value = point.address?.district?.provinceId || 0
   departmentId.value = point.address?.district?.province?.departmentId || 0
   syncRegionFromSelection()
@@ -296,14 +277,10 @@ async function submit() {
     }
   }
   loading.value = true
-  const days = weekDays.map((day) => day.id).filter((id) => openDays.value.includes(id))
   const payload = {
     ...form.value,
     urbanZone: form.value.urbanZone || undefined,
     reference: form.value.reference || undefined,
-    opensAt: form.value.opensAt || null,
-    closesAt: form.value.closesAt || null,
-    openDays: days.length ? days.join(',') : null,
   }
   try {
     if (editing) await http.patch(`/point-sales/${route.params.id}`, payload)
@@ -421,37 +398,6 @@ async function submit() {
         <label class="line">
           <span>Número de contacto (WhatsApp)</span>
           <input v-model="form.phone" required type="tel" inputmode="numeric" placeholder="987654321" />
-        </label>
-      </section>
-      <section class="group">
-        <h3>Horario de atención</h3>
-        <span class="caption">Días de atención</span>
-        <div class="week">
-          <label v-for="day in weekDays" :key="day.id">
-            <input v-model="openDays" type="checkbox" :value="day.id" />
-            {{ day.label }}
-          </label>
-        </div>
-        <div class="hours">
-          <label class="line">
-            <span>Abre</span>
-            <input v-model="form.opensAt" type="time" />
-          </label>
-          <label class="line">
-            <span>Cierra</span>
-            <input v-model="form.closesAt" type="time" />
-          </label>
-        </div>
-      </section>
-      <section class="group ship">
-        <div>
-          <h3>Delivery a domicilio</h3>
-          <p>Habilita despachos directos a clientes</p>
-        </div>
-        <input v-model="form.chargesDelivery" class="switch" type="checkbox" />
-        <label v-if="form.chargesDelivery" class="line fee">
-          <span>Costo del delivery</span>
-          <input v-model.number="form.deliveryFee" type="number" min="0" step="0.01" required />
         </label>
       </section>
       <section v-if="showProfessionals" class="group pros">
@@ -607,73 +553,6 @@ async function submit() {
   cursor: default;
 }
 
-.week {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.week label {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  border-radius: 12px;
-  background: #f0f3ff;
-  color: #5c5e65;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.week input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
-
-.week label:has(input:checked) {
-  background: var(--color-brand);
-  color: #fff;
-}
-
-.hours {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.ship {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  column-gap: 12px;
-}
-
-.ship > div {
-  grid-column: 1;
-}
-
-.ship p {
-  margin: 2px 0 0;
-  color: #5c5e65;
-  font-size: 12px;
-}
-
-.switch {
-  grid-column: 2;
-  grid-row: 1;
-  width: 48px;
-  height: 28px;
-  accent-color: var(--color-brand);
-}
-
-.fee {
-  grid-column: 1 / -1;
-}
-
 .save {
   display: flex;
   align-items: center;
@@ -778,15 +657,10 @@ async function submit() {
     font-size: 18px;
   }
 
-  .group.ship,
   .group.pros,
   .groups > .save,
   .groups > .hint {
     grid-column: 1 / -1;
-  }
-
-  .week {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 
   .save {

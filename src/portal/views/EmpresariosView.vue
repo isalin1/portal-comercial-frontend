@@ -7,13 +7,18 @@ import type { AccountUser, Zone } from '../types'
 
 type Filter = 'activos' | 'inactivos' | 'todos'
 
-type PlanBucket = { name: string; members: AccountUser[] }
+type PlanBucket = { name: string; members: ListedUser[] }
 type ZoneBucket = { key: string; name: string; plans: PlanBucket[]; count: number }
 type RegionBucket = { key: string; name: string; zones: ZoneBucket[]; count: number }
 
-const users = ref<AccountUser[]>([])
-const clients = ref<AccountUser[]>([])
+type Removal = { canDelete: boolean; canInactivate: boolean; reason: string }
+type ListedUser = AccountUser & { removal?: Removal }
+
+const users = ref<ListedUser[]>([])
+const clients = ref<ListedUser[]>([])
 const error = ref('')
+const pendingDelete = ref<ListedUser | null>(null)
+const acting = ref(false)
 const filter = ref<Filter>('todos')
 const search = ref('')
 
@@ -75,7 +80,7 @@ function planName(user: AccountUser) {
   return 'Sin plan'
 }
 
-function matches(user: AccountUser, business = false) {
+function matches(user: ListedUser, business = false) {
   if (filter.value === 'activos' && !user.isActive) return false
   if (filter.value === 'inactivos' && user.isActive) return false
   const query = search.value.trim().toLowerCase()
@@ -170,16 +175,50 @@ const regionGroups = computed((): RegionBucket[] => {
     })
 })
 
+async function loadUsers() {
+  const [empresarios, registrados] = await Promise.all([
+    http.get<ListedUser[]>('/user/empresarios'),
+    http.get<ListedUser[]>('/user/clients'),
+  ])
+  users.value = empresarios.data
+  clients.value = registrados.data
+}
+
+async function inactivate(user: ListedUser) {
+  error.value = ''
+  acting.value = true
+  try {
+    await http.patch(`/user/${user.id}/status`, { isActive: false })
+    user.isActive = false
+  } catch (err) {
+    error.value = apiError(err)
+  } finally {
+    acting.value = false
+  }
+}
+
+async function confirmDelete() {
+  const user = pendingDelete.value
+  if (!user) return
+  error.value = ''
+  acting.value = true
+  try {
+    await http.delete(`/user/${user.id}`)
+    users.value = users.value.filter((item) => item.id !== user.id)
+    clients.value = clients.value.filter((item) => item.id !== user.id)
+    pendingDelete.value = null
+  } catch (err) {
+    error.value = apiError(err)
+  } finally {
+    acting.value = false
+  }
+}
+
 onMounted(async () => {
   try {
-    const [empresarios, registrados, settings] = await Promise.all([
-      http.get<AccountUser[]>('/user/empresarios'),
-      http.get<AccountUser[]>('/user/clients'),
-      http.get<{ freePlanDays: number }>('/settings'),
-    ])
-    users.value = empresarios.data
-    clients.value = registrados.data
+    const settings = await http.get<{ freePlanDays: number }>('/settings')
     freePlanDays.value = settings.data.freePlanDays || 30
+    await loadUsers()
   } catch (err) {
     error.value = apiError(err)
   }
@@ -223,6 +262,14 @@ onMounted(async () => {
       </div>
     </section>
     <p v-if="planMessage" class="ok">{{ planMessage }}</p>
+    <section class="rules">
+      <h3>Eliminación de cuentas</h3>
+      <ul>
+        <li>Cliente o empresario que solo se registró y no confirmó el correo: a las 24 horas del enlace se elimina automáticamente y ese correo queda libre para otro registro.</li>
+        <li>Cliente con correo confirmado: no se puede eliminar hasta cumplir 12 meses. Sí se puede inactivar.</li>
+        <li>Empresario con correo confirmado y sin plan asignado: pasadas 48 horas, el administrador puede eliminarlo y el correo queda libre.</li>
+      </ul>
+    </section>
     <p v-if="!visible.length" class="empty">No hay empresarios para este filtro.</p>
     <section v-for="region in regionGroups" :key="region.key" class="region">
       <header class="region-head">
@@ -252,7 +299,19 @@ onMounted(async () => {
               <p v-if="!user.emailVerifiedAt" class="wait">Correo sin verificar</p>
               <p v-if="user.pendingEmpresario" class="wait">Solicita plan empresario · sigue como cliente</p>
               <p v-if="user.pendingPlan" class="wait">Luego: {{ pendingName(user) }}</p>
-              <router-link :to="{ name: 'vigencia', params: { id: user.id } }">Editar</router-link>
+              <p v-if="user.removal" class="rule-line">{{ user.removal.reason }}</p>
+              <div class="actions">
+                <router-link :to="{ name: 'vigencia', params: { id: user.id } }">Editar</router-link>
+                <button
+                  v-if="user.removal?.canDelete"
+                  type="button"
+                  class="danger"
+                  :disabled="acting"
+                  @click="pendingDelete = user"
+                >
+                  Eliminar
+                </button>
+              </div>
             </article>
           </div>
         </section>
@@ -275,10 +334,45 @@ onMounted(async () => {
           <p class="zone-ref">Zona: {{ clientZoneLabel(user) }}</p>
           <p class="live" :class="{ off: !user.isActive }">{{ user.isActive ? 'Activo' : 'Inactivo' }}</p>
           <p v-if="!user.emailVerifiedAt" class="wait">Correo sin verificar</p>
-          <router-link :to="{ name: 'vigencia', params: { id: user.id } }">Editar</router-link>
+          <p v-if="user.removal" class="rule-line">{{ user.removal.reason }}</p>
+          <div class="actions">
+            <router-link :to="{ name: 'vigencia', params: { id: user.id } }">Editar</router-link>
+            <button
+              v-if="user.removal?.canInactivate && user.isActive"
+              type="button"
+              :disabled="acting"
+              @click="inactivate(user)"
+            >
+              Inactivar
+            </button>
+            <button
+              v-if="user.removal?.canDelete"
+              type="button"
+              class="danger"
+              :disabled="acting"
+              @click="pendingDelete = user"
+            >
+              Eliminar
+            </button>
+          </div>
         </article>
       </div>
     </section>
+    <div v-if="pendingDelete" class="modal-back" @click.self="pendingDelete = null">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="delete-title">
+        <h3 id="delete-title">Eliminar cuenta</h3>
+        <p>
+          ¿Eliminar a {{ pendingDelete.datUser.firstName }} {{ pendingDelete.datUser.lastName }}?
+          El correo {{ pendingDelete.datUser.email }} quedará disponible para un nuevo registro.
+        </p>
+        <div class="modal-actions">
+          <button type="button" :disabled="acting" @click="pendingDelete = null">Cancelar</button>
+          <button type="button" class="danger" :disabled="acting" @click="confirmDelete">
+            {{ acting ? 'Eliminando…' : 'Eliminar' }}
+          </button>
+        </div>
+      </section>
+    </div>
   </ScreenFrame>
 </template>
 
@@ -427,20 +521,70 @@ onMounted(async () => {
 .zone-ref { color: #334155; font-weight: 600; }
 .live { color: #047857; font-weight: 700; }
 .live.off { color: #64748b; }
-.tiles a {
+.rules {
+  margin: 0 0 14px;
+  padding: 12px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--shadow-soft);
+}
+.rules h3 { margin: 0 0 8px; font-size: 14px; }
+.rules ul { margin: 0; padding-left: 18px; }
+.rules li { margin: 0 0 6px; color: #334155; font-size: 12px; line-height: 16px; }
+.rules li:last-child { margin-bottom: 0; }
+.rule-line { color: #334155; font-size: 11px; line-height: 1.35; }
+.actions { display: flex; flex-direction: column; gap: 6px; margin-top: auto; padding-top: 10px; }
+.actions a, .actions button {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 36px;
-  margin-top: auto;
-  padding-top: 10px;
+  border: 0;
   border-radius: 10px;
   background: var(--color-brand);
   color: #fff;
+  font: inherit;
   font-size: 12px;
   font-weight: 700;
   text-decoration: none;
+  cursor: pointer;
 }
+.actions button { background: #e2e8f0; color: #0f172a; }
+.actions button.danger { background: #fff; color: var(--color-brand); box-shadow: inset 0 0 0 1px var(--color-brand); }
+.actions button:disabled { opacity: 0.6; cursor: default; }
+.modal-back {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.45);
+}
+.modal {
+  width: min(360px, 100%);
+  padding: 16px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--shadow-soft);
+}
+.modal h3 { margin: 0 0 8px; font-size: 18px; }
+.modal p { margin: 0; color: #334155; font-size: 14px; line-height: 20px; }
+.modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+.modal-actions button {
+  height: 48px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: #e2e8f0;
+  color: #0f172a;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.modal-actions button.danger { background: var(--color-brand); color: #fff; }
+.modal-actions button:disabled { opacity: 0.7; cursor: default; }
 .empty { margin: 0 0 12px; color: #64748b; font-size: 13px; }
 
 .toolbar {

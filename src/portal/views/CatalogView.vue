@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import ScreenFrame from '../components/ScreenFrame.vue'
 import { apiError, http } from '../api'
+import { prepareImage } from '../prepareImage'
 import type { Market, Rubro, Unit, Zone } from '../types'
 
 const router = useRouter()
@@ -59,15 +60,28 @@ async function load() {
   zones.value = zoneRes.data
 }
 
-function onMarketImage(event: Event, editing: boolean) {
-  const file = (event.target as HTMLInputElement).files?.[0] || null
-  if (editing) {
-    editingMarketImage.value = file
-    editingRemoveImage.value = false
-    if (file) editingMarketPreview.value = URL.createObjectURL(file)
+async function onMarketImage(event: Event, editing: boolean) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0] || null
+  error.value = ''
+  if (!file) {
+    if (editing) editingMarketImage.value = null
+    else marketImage.value = null
     return
   }
-  marketImage.value = file
+  try {
+    const ready = await prepareImage(file)
+    if (editing) {
+      editingMarketImage.value = ready
+      editingRemoveImage.value = false
+      editingMarketPreview.value = URL.createObjectURL(ready)
+    } else {
+      marketImage.value = ready
+    }
+  } catch (err) {
+    input.value = ''
+    error.value = err instanceof Error ? err.message : 'No se pudo leer la foto'
+  }
 }
 
 function clearMarketPhoto() {
@@ -114,8 +128,15 @@ function startMarketEdit(market: Market) {
 }
 
 async function saveMarket() {
-  if (!editingMarketName.value.trim() || !editingMarketZoneId.value) return
   error.value = ''
+  if (!editingMarketName.value.trim()) {
+    error.value = 'Escribe el nombre del mercado.'
+    return
+  }
+  if (!editingMarketZoneId.value) {
+    error.value = 'Elige la zona del mercado. Sin zona, la foto no se guarda.'
+    return
+  }
   saving.value = true
   try {
     const body = new FormData()
@@ -291,6 +312,7 @@ async function removeCategory() {
               <input :key="editingImageKey" type="file" accept="image/jpeg,image/png,image/webp" @change="onMarketImage($event, true)" />
             </label>
             <button v-if="editingMarketPreview" class="no wide" type="button" @click="clearMarketPhoto">Quitar foto</button>
+            <p v-if="error" class="error">{{ error }}</p>
             <div class="pair">
               <button class="yes" type="button" :disabled="saving" @click="saveMarket">Guardar</button>
               <button class="no" type="button" :disabled="saving" @click="editingMarketId = 0">Cancelar</button>
@@ -341,6 +363,7 @@ async function removeCategory() {
           <span>Imagen</span>
           <input :key="marketImageKey" type="file" accept="image/jpeg,image/png,image/webp" @change="onMarketImage($event, false)" />
         </label>
+        <p v-if="error" class="error">{{ error }}</p>
         <div class="pair">
           <button class="yes" type="button" :disabled="saving || !marketName.trim() || !marketZoneId" @click="addMarket">Guardar</button>
           <button class="no" type="button" @click="showMarketForm = false">Cancelar</button>
@@ -389,6 +412,7 @@ async function removeCategory() {
 .group h3::before { content: ''; width: 4px; height: 14px; border-radius: 99px; background: var(--color-brand); }
 .stack { display: block; }
 .stack h3 { margin-bottom: 4px; }
+.error { margin: 0 0 8px; color: var(--color-brand); font-size: 13px; font-weight: 700; }
 .stack p, .empty, .market > p { margin: 0; color: #64748b; font-size: 12px; line-height: 1.4; }
 .empty { margin-bottom: 8px; }
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

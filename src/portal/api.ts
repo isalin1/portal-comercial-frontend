@@ -15,6 +15,23 @@ http.interceptors.request.use((config) => {
   return config
 })
 
+http.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = (error as { response?: { status?: number } })?.response?.status
+    const url = String((error as { config?: { url?: string } })?.config?.url || '')
+    const isLogin = url.includes('/auth/login') || url.includes('/auth/recuperar') || url.includes('/auth/restablecer')
+    const hadSession = Boolean(localStorage.getItem('portal_token') || localStorage.getItem('portal_user'))
+    if (status === 401 && !isLogin && hadSession && !window.location.pathname.startsWith('/login')) {
+      localStorage.removeItem('portal_token')
+      localStorage.removeItem('portal_user')
+      const next = window.location.pathname + window.location.search
+      window.location.assign(`/login?redirect=${encodeURIComponent(next)}&aviso=sesion`)
+    }
+    return Promise.reject(error)
+  },
+)
+
 export function apiError(error: unknown): string {
   const data = (error as { response?: { data?: { message?: string | string[] | { code?: string; message?: string }; code?: string } } })
     ?.response?.data

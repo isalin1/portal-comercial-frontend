@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import ScreenFrame from '../components/ScreenFrame.vue'
 import { apiError, http } from '../api'
-import type { Business, Category } from '../types'
+import type { Business, Category, PointSale } from '../types'
 import { readZone, zoneParams } from '../zone'
 
 const route = useRoute()
@@ -11,14 +11,27 @@ const category = ref<Category | null>(null)
 const businesses = ref<Business[]>([])
 const error = ref('')
 const search = ref('')
+const marketName = ref('')
+const marketId = computed(() => Number(route.params.marketId || 0))
 const zoneLabel = computed(() => {
   const zone = readZone()
   if (!zone) return ''
   return `${zone.name}, ${zone.districtName}`
 })
+const contextLabel = computed(() => marketName.value || zoneLabel.value)
 
 function normalize(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+}
+
+function addressLine(point: PointSale) {
+  const address = point.address
+  if (!address) return ''
+  return [address.street, address.urbanZone, address.district?.name].filter(Boolean).join(', ')
+}
+
+function addressesOf(business: Business) {
+  return [...new Set((business.pointSales || []).map(addressLine).filter(Boolean))]
 }
 
 function rubroName() {
@@ -50,8 +63,34 @@ const placeCount = computed(() => {
 
 async function load() {
   error.value = ''
-  const id = Number(route.params.id)
+  const id = Number(route.params.categoryId || route.params.id)
   try {
+    if (marketId.value) {
+      const { data } = await http.get<{
+        name: string
+        rubros: { id: number; name: string; categories: { id: number | null; name: string; imageUrl?: string | null; businesses: Business[] }[] }[]
+      }>(`/public/markets/${marketId.value}`, { params: zoneParams() })
+      marketName.value = data.name
+      const match = data.rubros
+        .flatMap((rubro) => rubro.categories.map((item) => ({ rubro, item })))
+        .find((row) => row.item.id === id)
+      if (!match?.item.id) {
+        category.value = null
+        businesses.value = []
+        error.value = 'Esa categoría no está en este mercado.'
+        return
+      }
+      category.value = {
+        id: match.item.id,
+        name: match.item.name,
+        imageUrl: match.item.imageUrl,
+        rubroId: match.rubro.id,
+        rubro: { id: match.rubro.id, name: match.rubro.name },
+      }
+      businesses.value = match.item.businesses
+      return
+    }
+    marketName.value = ''
     const [categoryRes, businessRes] = await Promise.all([
       http.get<Category>(`/categories/${id}`),
       http.get<Business[]>('/public/businesses', { params: { categoryId: id, ...zoneParams() } }),
@@ -64,7 +103,7 @@ async function load() {
 }
 
 onMounted(load)
-watch(() => route.params.id, () => {
+watch(() => [route.params.id, route.params.categoryId, route.params.marketId], () => {
   search.value = ''
   load()
 })
@@ -73,7 +112,7 @@ watch(() => route.params.id, () => {
 <template>
   <ScreenFrame storefront back bar fluid>
     <header class="cat-head">
-      <p v-if="zoneLabel" class="zone-chip">{{ zoneLabel }}</p>
+      <p v-if="contextLabel" class="zone-chip">{{ contextLabel }}</p>
       <h2>{{ category?.name || 'Categoría' }}</h2>
       <p class="meta">
         <span v-if="category?.rubro">{{ category.rubro.name }}</span>
@@ -97,6 +136,7 @@ watch(() => route.params.id, () => {
         <div class="copy">
           <h3>{{ business.commercialName }}</h3>
           <p v-if="business.commercialDescription" class="blurb">{{ business.commercialDescription }}</p>
+          <p v-if="addressesOf(business).length" class="addr">{{ addressesOf(business).join(' · ') }}</p>
           <router-link
             class="go"
             :to="{ name: 'business', params: { id: business.id }, query: { categoria: category?.id } }"
@@ -114,10 +154,14 @@ watch(() => route.params.id, () => {
   margin: 8px 0 0;
   font-family: var(--font-ui);
   font-size: 24px;
-  line-height: 30px;
+  line-height: 1.25;
   font-weight: 700;
   letter-spacing: -0.02em;
   text-align: left;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .zone-chip {
@@ -173,9 +217,9 @@ watch(() => route.params.id, () => {
 }
 
 .stack {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
   margin-top: 16px;
 }
 
@@ -195,7 +239,7 @@ watch(() => route.params.id, () => {
   align-items: center;
   justify-content: center;
   width: 100%;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 16 / 9;
   background: linear-gradient(145deg, #fee2e2, #fecaca);
   overflow: hidden;
 }
@@ -212,7 +256,7 @@ watch(() => route.params.id, () => {
 
 .media span {
   color: #fff;
-  font-size: 42px;
+  font-size: 28px;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -221,36 +265,58 @@ watch(() => route.params.id, () => {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px 16px 16px;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 8px 10px;
 }
 
 .shop h3 {
   margin: 0;
   font-family: var(--font-ui);
-  font-size: 18px;
-  line-height: 24px;
+  font-size: 14px;
+  line-height: 18px;
   font-weight: 800;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.blurb,
+.addr {
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .blurb {
-  margin: 0;
   color: #5c5e65;
-  font-size: 13px;
-  line-height: 18px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.addr {
+  color: var(--color-ink);
+  font-size: 9px;
+  line-height: 12px;
+  font-weight: 600;
 }
 
 .go {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 48px;
-  margin-top: 4px;
+  min-height: 40px;
+  margin-top: auto;
+  padding: 8px 6px;
   border-radius: var(--radius-control);
   background: var(--color-brand);
   color: #fff;
-  font-size: 15px;
+  font-size: 12px;
+  line-height: 1.2;
   font-weight: 700;
+  text-align: center;
   text-decoration: none;
 }
 

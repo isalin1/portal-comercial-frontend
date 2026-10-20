@@ -95,10 +95,14 @@ function openChat(event: Event) {
 
 .wa-btn {
   margin-top: 0;
-  padding: 8px 12px;
+  min-height: 44px;
+  height: auto;
+  padding: 10px 12px;
   border-radius: 6px;
   background: #128c7e;
   font-size: 14px;
+  line-height: 1.3;
+  white-space: normal;
 }
 
 .gate {

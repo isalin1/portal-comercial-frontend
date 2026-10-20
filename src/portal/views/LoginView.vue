@@ -27,6 +27,9 @@ if (storedNote) {
   note.value = storedNote
   sessionStorage.removeItem('portal_login_note')
 }
+if (route.query.aviso === 'sesion') {
+  error.value = 'Tu sesión venció. Vuelve a entrar para guardar.'
+}
 
 const registerTo = computed(() =>
   role.value === 'empresario' ? { name: 'empresario-benefits' } : { name: 'client-benefits' },

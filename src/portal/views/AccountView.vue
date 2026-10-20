@@ -124,8 +124,6 @@ function logout() {
       <template v-if="auth.userType === 'CLIENTE'">
         <p class="lead">Mi cuenta personal y actividades</p>
         <nav class="tiles">
-          <router-link :to="{ name: 'raffles' }">Mis Sorteos</router-link>
-          <router-link :to="{ name: 'promos' }">Mis Promos</router-link>
           <router-link :to="{ name: 'profile' }">
             Mis Datos
             <small>Actualizar</small>
@@ -258,7 +256,7 @@ function logout() {
 
 .tiles {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   margin-bottom: 18px;
 }
