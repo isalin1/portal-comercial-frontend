@@ -54,7 +54,7 @@ function clock(value: string) {
   if (!match) return value
   const hour = Number(match[1])
   const period = hour >= 12 ? 'pm' : 'am'
-  return `${String(hour % 12 || 12).padStart(2, '0')}:${match[2]} ${period}`
+  return `${hour % 12 || 12}:${match[2]} ${period}`
 }
 
 function money(value: number) {
@@ -185,8 +185,8 @@ onMounted(refresh)
           </div>
           <div v-for="day in schedule.days" :key="day.weekday" class="row">
             <strong>{{ DAY_NAME[day.weekday] }}</strong>
-            <span>{{ clock(day.opensAt) }}</span>
-            <span>{{ clock(day.closesAt) }}</span>
+            <span class="when">{{ clock(day.opensAt) }}</span>
+            <span class="when">{{ clock(day.closesAt) }}</span>
             <span class="tools">
               <button type="button" class="pen" :aria-label="`Editar horario de ${DAY_NAME[day.weekday]}`" @click="openEditor(day)">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -325,7 +325,7 @@ onMounted(refresh)
 
 .card {
   margin-top: 16px;
-  padding: 16px;
+  padding: 14px 12px;
   border-radius: var(--radius-card);
   background: var(--color-surface);
   box-shadow: var(--shadow-soft);
@@ -344,10 +344,14 @@ onMounted(refresh)
 
 .row {
   display: grid;
-  grid-template-columns: minmax(72px, 1.1fr) minmax(68px, 0.9fr) minmax(68px, 0.9fr) 78px;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.9fr) minmax(0, 0.9fr) max-content;
+  column-gap: 4px;
   align-items: center;
-  font-size: 13px;
+  font-size: 12px;
+}
+
+.row > * {
+  min-width: 0;
 }
 
 .labels {
@@ -356,8 +360,19 @@ onMounted(refresh)
   font-weight: 700;
 }
 
+.labels span:last-child {
+  justify-self: end;
+}
+
 .row strong {
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.15;
+}
+
+.when {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .tools,
@@ -365,14 +380,20 @@ onMounted(refresh)
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 2px;
+  min-width: max-content;
+}
+
+.tools {
+  justify-self: end;
 }
 
 .pen {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
   padding: 0;
   border: 0;
   border-radius: 8px;
@@ -388,8 +409,9 @@ onMounted(refresh)
 
 .toggle {
   position: relative;
-  width: 44px;
+  width: 42px;
   height: 26px;
+  flex: 0 0 42px;
   padding: 0;
   border: 0;
   border-radius: 999px;
@@ -413,7 +435,7 @@ onMounted(refresh)
 }
 
 .toggle.on i {
-  left: 21px;
+  left: 19px;
 }
 
 .toggle:disabled {
